@@ -32,7 +32,11 @@ func (da *dirAliases) List() []string {
 func (da *dirAliases) Get(alias string) string {
 	da.mu.RLock()
 	defer da.mu.RUnlock()
-	return da.m[alias].Root()
+	fs, ok := da.m[alias]
+	if !ok {
+		return ""
+	}
+	return fs.Root()
 }
 
 // Put registers an alias for the given path.
