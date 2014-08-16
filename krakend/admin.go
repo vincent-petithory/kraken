@@ -133,6 +133,7 @@ type createServerRequest struct {
 
 func (spah *serverPoolAdminHandler) createServerWithRandomPort(w http.ResponseWriter, r *http.Request) {
 	var req createServerRequest
+	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -155,6 +156,7 @@ func (spah *serverPoolAdminHandler) createServerWithRandomPort(w http.ResponseWr
 
 func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.Request) {
 	var req createServerRequest
+	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
