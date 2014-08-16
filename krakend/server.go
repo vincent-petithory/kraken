@@ -126,7 +126,9 @@ func (ds *dirServer) ListenAndServe() error {
 	ds.srv = &http.Server{
 		Handler: ds.DirAliases,
 	}
-	ds.ln = tcpKeepAliveListener{ln.(*net.TCPListener)}
+	ds.ln = &connsCloserListener{
+		Listener: tcpKeepAliveListener{ln.(*net.TCPListener)},
+	}
 
 	close(ds.started)
 	if err := ds.srv.Serve(ds.ln); err != nil {
@@ -137,6 +139,30 @@ func (ds *dirServer) ListenAndServe() error {
 
 func (ds *dirServer) Close() error {
 	return ds.ln.Close()
+}
+
+type connsCloserListener struct {
+	net.Listener
+	conns []net.Conn
+}
+
+func (ln *connsCloserListener) Accept() (c net.Conn, err error) {
+	c, err = ln.Listener.Accept()
+	if err != nil {
+		return
+	}
+	ln.conns = append(ln.conns, c)
+	return c, nil
+}
+
+func (ln *connsCloserListener) Close() error {
+	for _, c := range ln.conns {
+		if err := c.Close(); err != nil {
+			log.Println(err)
+		}
+	}
+	ln.conns = nil
+	return ln.Listener.Close()
 }
 
 // borrowed from net/http
