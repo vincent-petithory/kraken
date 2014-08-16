@@ -5,6 +5,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+
+	"github.com/vincent-petithory/kraken"
 )
 
 var adminAddr string
@@ -16,14 +18,11 @@ func init() {
 
 func main() {
 	// Init server pool, run existing servers and listen for new ones
-	serverPool := &serverPool{
-		Srvs:  make([]*dirServer, 0),
-		SrvCh: make(chan *dirServer),
-	}
+	serverPool := kraken.NewServerPool()
 	go serverPool.ListenAndRun()
 
 	// Start administration server
-	spah := NewServerPoolAdminHandler(serverPool)
+	spah := kraken.NewServerPoolAdminHandler(serverPool)
 
 	ln, err := net.Listen("tcp", adminAddr)
 	if err != nil {

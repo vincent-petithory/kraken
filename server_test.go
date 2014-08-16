@@ -1,4 +1,4 @@
-package main
+package kraken_test
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/vincent-petithory/kraken"
 )
 
 type mockFileServer struct {
@@ -18,8 +20,8 @@ func (fs mockFileServer) Root() string {
 }
 
 func TestDirAliasHandler(t *testing.T) {
-	da := newDirAliases()
-	da.FileServerFactory = fileServerFactory(func(root string) FileServer {
+	da := kraken.NewDirAliases()
+	da.FileServerCreator = kraken.FileServerCreator(func(root string) kraken.FileServer {
 		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			io.WriteString(w, r.URL.Path)

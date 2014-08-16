@@ -1,4 +1,4 @@
-package main
+package kraken
 
 import (
 	"fmt"
@@ -11,13 +11,13 @@ import (
 	"time"
 )
 
-type dirAliases struct {
+type DirAliases struct {
 	m                 map[string]FileServer
 	mu                sync.RWMutex
-	FileServerFactory fileServerFactory
+	FileServerCreator FileServerCreator
 }
 
-func (da *dirAliases) List() []string {
+func (da *DirAliases) List() []string {
 	da.mu.RLock()
 	defer da.mu.RUnlock()
 	aliases := make([]string, 0, len(da.m))
@@ -29,7 +29,7 @@ func (da *dirAliases) List() []string {
 
 // Get retrieves the path for the given alias.
 // It returns "" if the alias doesn't exist.
-func (da *dirAliases) Get(alias string) string {
+func (da *DirAliases) Get(alias string) string {
 	da.mu.RLock()
 	defer da.mu.RUnlock()
 	fs, ok := da.m[alias]
@@ -41,19 +41,19 @@ func (da *dirAliases) Get(alias string) string {
 
 // Put registers an alias for the given path.
 // It returns true if the alias already exists.
-func (da *dirAliases) Put(alias string, path string) bool {
+func (da *DirAliases) Put(alias string, path string) bool {
 	da.mu.Lock()
 	defer da.mu.Unlock()
 	_, ok := da.m[alias]
 
-	fs := da.FileServerFactory(path)
+	fs := da.FileServerCreator(path)
 	da.m[alias] = fs
 	return ok
 }
 
 // Delete removes an existing alias.
 // It returns true if the alias existed.
-func (da *dirAliases) Delete(alias string) bool {
+func (da *DirAliases) Delete(alias string) bool {
 	da.mu.RLock()
 	defer da.mu.RUnlock()
 	_, ok := da.m[alias]
@@ -61,7 +61,7 @@ func (da *dirAliases) Delete(alias string) bool {
 	return ok
 }
 
-func (da *dirAliases) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (da *DirAliases) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !(strings.Count(r.URL.Path, "/") >= 2 && len(r.URL.Path) > 2) {
 		http.NotFound(w, r)
 		return
@@ -84,15 +84,15 @@ func (da *dirAliases) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fs.ServeHTTP(w, r)
 }
 
-func newDirAliases() *dirAliases {
-	return &dirAliases{
+func NewDirAliases() *DirAliases {
+	return &DirAliases{
 		m:                 make(map[string]FileServer),
-		FileServerFactory: stdFileServerFactory,
+		FileServerCreator: StdFileServerCreator,
 	}
 }
 
-type dirServer struct {
-	DirAliases *dirAliases
+type Server struct {
+	DirAliases *DirAliases
 	Addr       string
 	Port       uint16
 	srv        *http.Server
@@ -100,15 +100,15 @@ type dirServer struct {
 	started    chan struct{}
 }
 
-func newDirServer(addr string) *dirServer {
-	return &dirServer{
-		DirAliases: newDirAliases(),
+func NewServer(addr string) *Server {
+	return &Server{
+		DirAliases: NewDirAliases(),
 		Addr:       addr,
 		started:    make(chan struct{}),
 	}
 }
 
-func (ds *dirServer) ListenAndServe() error {
+func (ds *Server) ListenAndServe() error {
 	ln, err := net.Listen("tcp", ds.Addr)
 	if err != nil {
 		return err
@@ -137,7 +137,7 @@ func (ds *dirServer) ListenAndServe() error {
 	return nil
 }
 
-func (ds *dirServer) Close() error {
+func (ds *Server) Close() error {
 	return ds.ln.Close()
 }
 
@@ -181,23 +181,30 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 	return tc, nil
 }
 
-type serverPool struct {
-	Srvs  []*dirServer
-	SrvCh chan *dirServer
+func NewServerPool() *ServerPool {
+	return &ServerPool{
+		Srvs:  make([]*Server, 0),
+		SrvCh: make(chan *Server),
+	}
 }
 
-func (sp *serverPool) Add(addr string) (*dirServer, error) {
-	if err := CheckAddr(addr); err != nil {
+type ServerPool struct {
+	Srvs  []*Server
+	SrvCh chan *Server
+}
+
+func (sp *ServerPool) Add(addr string) (*Server, error) {
+	if err := checkAddr(addr); err != nil {
 		return nil, err
 	}
-	ds := newDirServer(addr)
+	ds := NewServer(addr)
 	sp.SrvCh <- ds
 	<-ds.started
 	sp.Srvs = append(sp.Srvs, ds)
 	return ds, nil
 }
 
-func (sp *serverPool) Get(port uint16) *dirServer {
+func (sp *ServerPool) Get(port uint16) *Server {
 	for _, srv := range sp.Srvs {
 		if srv.Port == port {
 			return srv
@@ -206,7 +213,7 @@ func (sp *serverPool) Get(port uint16) *dirServer {
 	return nil
 }
 
-func (sp *serverPool) Remove(port uint16) (bool, error) {
+func (sp *ServerPool) Remove(port uint16) (bool, error) {
 	for i, srv := range sp.Srvs {
 		if srv.Port != port {
 			continue
@@ -222,22 +229,22 @@ func (sp *serverPool) Remove(port uint16) (bool, error) {
 	return false, nil
 }
 
-func (sp *serverPool) ListenAndRun() {
+func (sp *ServerPool) ListenAndRun() {
 	for _, srv := range sp.Srvs {
-		go func(ds *dirServer) {
+		go func(ds *Server) {
 			// TODO remove server from list?
 			log.Print(ds.ListenAndServe())
 		}(srv)
 	}
 	for srv := range sp.SrvCh {
-		go func(ds *dirServer) {
+		go func(ds *Server) {
 			// TODO remove server from list?
 			log.Print(ds.ListenAndServe())
 		}(srv)
 	}
 }
 
-func CheckAddr(addr string) error {
+func checkAddr(addr string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err

@@ -1,4 +1,4 @@
-package main
+package kraken
 
 import (
 	"net/http"
@@ -18,11 +18,11 @@ func (fs stdFileServer) Root() string {
 	return fs.root
 }
 
-var stdFileServerFactory fileServerFactory = func(root string) FileServer {
+var StdFileServerCreator FileServerCreator = func(root string) FileServer {
 	return &stdFileServer{
 		Handler: http.FileServer(http.Dir(root)),
 		root:    root,
 	}
 }
 
-type fileServerFactory func(root string) FileServer
+type FileServerCreator func(root string) FileServer

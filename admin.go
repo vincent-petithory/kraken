@@ -1,4 +1,4 @@
-package main
+package kraken
 
 import (
 	"bytes"
@@ -13,23 +13,23 @@ import (
 )
 
 type serverPoolAdminHandler struct {
-	*serverPool
+	*ServerPool
 	h      http.Handler
 	router *mux.Router
 }
 
 const (
-	LocationServers                = "servers"
-	LocationServersSelf            = "servers.self"
-	LocationServersSelfAliases     = "servers.self.aliases"
-	LocationServersSelfAliasesSelf = "servers.self.aliases.self"
+	routeServers                = "servers"
+	routeServersSelf            = "servers.self"
+	routeServersSelfAliases     = "servers.self.aliases"
+	routeServersSelfAliasesSelf = "servers.self.aliases.self"
 )
 
 type adminApiErrorType string
 
 const (
-	ApiErrTypeBadRequest  adminApiErrorType = "bad_request_error"
-	ApiErrTypeApiInternal                   = "api_internal_error"
+	apiErrTypeBadRequest  adminApiErrorType = "bad_request_error"
+	apiErrTypeApiInternal                   = "api_internal_error"
 )
 
 type adminApiError struct {
@@ -45,29 +45,29 @@ func (e *adminApiError) Error() string {
 	return e.Msg
 }
 
-func NewServerPoolAdminHandler(serverPool *serverPool) *serverPoolAdminHandler {
-	spah := serverPoolAdminHandler{serverPool: serverPool}
+func NewServerPoolAdminHandler(serverPool *ServerPool) *serverPoolAdminHandler {
+	spah := serverPoolAdminHandler{ServerPool: serverPool}
 	r := mux.NewRouter()
 	apiRouter := r.PathPrefix("/api/").Subrouter()
 	apiRouter.Handle("/servers", handlers.MethodHandler{
 		"GET":    http.HandlerFunc(spah.getServers),
 		"POST":   http.HandlerFunc(spah.createServerWithRandomPort),
 		"DELETE": http.HandlerFunc(spah.removeServers),
-	}).Name(LocationServers)
+	}).Name(routeServers)
 	apiRouter.Handle("/servers/{port:[0-9]{1,5}}", handlers.MethodHandler{
 		"GET":    http.HandlerFunc(spah.getServer),
 		"PUT":    http.HandlerFunc(spah.createServer),
 		"DELETE": http.HandlerFunc(spah.removeServer),
-	}).Name(LocationServersSelf)
+	}).Name(routeServersSelf)
 	apiRouter.Handle("/servers/{port:[0-9]{1,5}}/aliases", handlers.MethodHandler{
 		"GET":    http.HandlerFunc(spah.getServerAliases),
 		"DELETE": http.HandlerFunc(spah.removeServerAliases),
-	}).Name(LocationServersSelfAliases)
+	}).Name(routeServersSelfAliases)
 	apiRouter.Handle("/servers/{port:[0-9]{1,5}}/aliases/{alias}", handlers.MethodHandler{
 		"GET":    http.HandlerFunc(spah.getServerAlias),
 		"PUT":    http.HandlerFunc(spah.createServerAlias),
 		"DELETE": http.HandlerFunc(spah.removeServerAlias),
-	}).Name(LocationServersSelfAliasesSelf)
+	}).Name(routeServersSelfAliasesSelf)
 	spah.h = r
 	spah.router = r
 	return &spah
@@ -88,34 +88,34 @@ func (spah *serverPoolAdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Req
 	spah.h.ServeHTTP(w, r)
 }
 
-type dirServerData struct {
+type serverData struct {
 	BindAddress string            `json:"bind_address"`
 	Port        uint16            `json:"port"`
 	Aliases     map[string]string `json:"aliases"`
 }
 
-func dirServerDataFromDirServer(ds *dirServer) dirServerData {
+func newServerDataFromServer(ds *Server) *serverData {
 	aliases := ds.DirAliases.List()
 	aliasesMap := make(map[string]string, len(aliases))
 	for _, alias := range aliases {
 		aliasesMap[alias] = ds.DirAliases.Get(alias)
 	}
 	host, _, _ := net.SplitHostPort(ds.Addr)
-	return dirServerData{
+	return &serverData{
 		BindAddress: host,
 		Port:        ds.Port,
 		Aliases:     aliasesMap,
 	}
 }
 
-func (spah *serverPoolAdminHandler) serverOr404(w http.ResponseWriter, r *http.Request) *dirServer {
+func (spah *serverPoolAdminHandler) serverOr404(w http.ResponseWriter, r *http.Request) *Server {
 	sport := mux.Vars(r)["port"]
 	port, err := strconv.Atoi(sport)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return nil
 	}
-	srv := spah.serverPool.Get(uint16(port))
+	srv := spah.ServerPool.Get(uint16(port))
 	if srv == nil {
 		http.Error(w, fmt.Sprintf("server %d not found", port), http.StatusNotFound)
 		return nil
@@ -125,9 +125,9 @@ func (spah *serverPoolAdminHandler) serverOr404(w http.ResponseWriter, r *http.R
 
 func (spah *serverPoolAdminHandler) getServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	srvsData := make([]dirServerData, 0, len(spah.serverPool.Srvs))
-	for _, srv := range spah.serverPool.Srvs {
-		srvsData = append(srvsData, dirServerDataFromDirServer(srv))
+	srvsData := make([]serverData, 0, len(spah.ServerPool.Srvs))
+	for _, srv := range spah.ServerPool.Srvs {
+		srvsData = append(srvsData, *newServerDataFromServer(srv))
 	}
 	if err := json.NewEncoder(w).Encode(srvsData); err != nil {
 		log.Print(err)
@@ -140,7 +140,7 @@ func (spah *serverPoolAdminHandler) getServer(w http.ResponseWriter, r *http.Req
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(dirServerDataFromDirServer(srv)); err != nil {
+	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
 		log.Print(err)
 	}
 }
@@ -158,16 +158,16 @@ func (spah *serverPoolAdminHandler) createServerWithRandomPort(w http.ResponseWr
 	}
 
 	addr := net.JoinHostPort(req.BindAddress, "0")
-	srv, err := spah.serverPool.Add(addr)
+	srv, err := spah.ServerPool.Add(addr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Wait for the server to be started
 	<-srv.started
-	spah.writeLocation(w, LocationServersSelf, "port", strconv.Itoa(int(srv.Port)))
+	spah.writeLocation(w, routeServersSelf, "port", strconv.Itoa(int(srv.Port)))
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(dirServerDataFromDirServer(srv)); err != nil {
+	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
 		log.Print(err)
 	}
 }
@@ -187,7 +187,7 @@ func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.
 	}
 
 	addr := net.JoinHostPort(req.BindAddress, strconv.Itoa(port))
-	srv, err := spah.serverPool.Add(addr)
+	srv, err := spah.ServerPool.Add(addr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -195,15 +195,15 @@ func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.
 	// Wait for the server to be started
 	<-srv.started
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(dirServerDataFromDirServer(srv)); err != nil {
+	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
 		log.Print(err)
 	}
 }
 
 func (spah *serverPoolAdminHandler) removeServers(w http.ResponseWriter, r *http.Request) {
 	errs := make([]error, 0)
-	for _, srv := range spah.serverPool.Srvs {
-		if ok, err := spah.serverPool.Remove(srv.Port); err != nil {
+	for _, srv := range spah.ServerPool.Srvs {
+		if ok, err := spah.ServerPool.Remove(srv.Port); err != nil {
 			errs = append(errs, err)
 		} else if !ok {
 			err := fmt.Errorf("error shutting down server on port %d", srv.Port)
@@ -215,7 +215,7 @@ func (spah *serverPoolAdminHandler) removeServers(w http.ResponseWriter, r *http
 		for _, err := range errs {
 			fmt.Fprintln(&bufMsg, err.Error())
 		}
-		apiErr := &adminApiError{ApiErrTypeApiInternal, bufMsg.String()}
+		apiErr := &adminApiError{apiErrTypeApiInternal, bufMsg.String()}
 		w.WriteHeader(http.StatusInternalServerError)
 		if err := json.NewEncoder(w).Encode(apiErr); err != nil {
 			log.Print(err)
@@ -230,7 +230,7 @@ func (spah *serverPoolAdminHandler) removeServer(w http.ResponseWriter, r *http.
 	if srv == nil {
 		return
 	}
-	if ok, err := spah.serverPool.Remove(srv.Port); err != nil {
+	if ok, err := spah.ServerPool.Remove(srv.Port); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	} else if !ok {
