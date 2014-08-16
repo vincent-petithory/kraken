@@ -99,7 +99,7 @@ func dirServerDataFromDirServer(ds *dirServer) dirServerData {
 
 func (spah *serverPoolAdminHandler) getServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	srvsData := make([]dirServerData, len(spah.serverPool.Srvs))
+	srvsData := make([]dirServerData, 0, len(spah.serverPool.Srvs))
 	for _, srv := range spah.serverPool.Srvs {
 		srvsData = append(srvsData, dirServerDataFromDirServer(srv))
 	}

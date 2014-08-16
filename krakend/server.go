@@ -20,7 +20,7 @@ type dirAliases struct {
 func (da *dirAliases) List() []string {
 	da.mu.RLock()
 	defer da.mu.RUnlock()
-	aliases := make([]string, len(da.m))
+	aliases := make([]string, 0, len(da.m))
 	for alias := range da.m {
 		aliases = append(aliases, alias)
 	}
