@@ -77,9 +77,33 @@ func (spah *serverPoolAdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Req
 	spah.h.ServeHTTP(w, r)
 }
 
+type dirServerData struct {
+	BindAddress string            `json:"bind_address"`
+	Port        uint16            `json:"port"`
+	Aliases     map[string]string `json:"aliases"`
+}
+
+func dirServerDataFromDirServer(ds *dirServer) dirServerData {
+	aliases := ds.DirAliases.List()
+	aliasesMap := make(map[string]string, len(aliases))
+	for _, alias := range aliases {
+		aliasesMap[alias] = ds.DirAliases.Get(alias)
+	}
+	host, _, _ := net.SplitHostPort(ds.Addr)
+	return dirServerData{
+		BindAddress: host,
+		Port:        ds.Port,
+		Aliases:     aliasesMap,
+	}
+}
+
 func (spah *serverPoolAdminHandler) getServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(spah.serverPool.Srvs); err != nil {
+	srvsData := make([]dirServerData, len(spah.serverPool.Srvs))
+	for _, srv := range spah.serverPool.Srvs {
+		srvsData = append(srvsData, dirServerDataFromDirServer(srv))
+	}
+	if err := json.NewEncoder(w).Encode(srvsData); err != nil {
 		log.Print(err)
 	}
 }
@@ -98,7 +122,7 @@ func (spah *serverPoolAdminHandler) getServer(w http.ResponseWriter, r *http.Req
 	}
 
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(srv); err != nil {
+	if err := json.NewEncoder(w).Encode(dirServerDataFromDirServer(srv)); err != nil {
 		log.Print(err)
 	}
 }
@@ -115,16 +139,16 @@ func (spah *serverPoolAdminHandler) createServerWithRandomPort(w http.ResponseWr
 	}
 
 	addr := net.JoinHostPort(req.BindAddress, "0")
-	ds, err := spah.serverPool.Add(addr)
+	srv, err := spah.serverPool.Add(addr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Wait for the server to be started
-	<-ds.started
-	spah.writeLocation(w, LocationServersPort, "port", strconv.Itoa(int(ds.Port)))
+	<-srv.started
+	spah.writeLocation(w, LocationServersPort, "port", strconv.Itoa(int(srv.Port)))
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(ds); err != nil {
+	if err := json.NewEncoder(w).Encode(dirServerDataFromDirServer(srv)); err != nil {
 		log.Print(err)
 	}
 }
@@ -143,15 +167,15 @@ func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.
 	}
 
 	addr := net.JoinHostPort(req.BindAddress, strconv.Itoa(port))
-	ds, err := spah.serverPool.Add(addr)
+	srv, err := spah.serverPool.Add(addr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Wait for the server to be started
-	<-ds.started
+	<-srv.started
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(ds); err != nil {
+	if err := json.NewEncoder(w).Encode(dirServerDataFromDirServer(srv)); err != nil {
 		log.Print(err)
 	}
 }

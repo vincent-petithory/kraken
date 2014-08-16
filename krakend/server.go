@@ -1,20 +1,90 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 type dirAliases struct {
-	M map[string]string
-	sync.RWMutex
+	m                 map[string]FileServer
+	mu                sync.RWMutex
+	FileServerFactory fileServerFactory
+}
+
+func (da *dirAliases) List() []string {
+	da.mu.RLock()
+	defer da.mu.RUnlock()
+	aliases := make([]string, len(da.m))
+	for alias := range da.m {
+		aliases = append(aliases, alias)
+	}
+	return aliases
+}
+
+// Get retrieves the path for the given alias.
+// It returns "" if the alias doesn't exist.
+func (da *dirAliases) Get(alias string) string {
+	da.mu.RLock()
+	defer da.mu.RUnlock()
+	return da.m[alias].Root()
+}
+
+// Put registers an alias for the given path.
+// It returns true if the alias already exists.
+func (da *dirAliases) Put(alias string, path string) bool {
+	da.mu.Lock()
+	defer da.mu.Unlock()
+	_, ok := da.m[alias]
+
+	fs := da.FileServerFactory(path)
+	da.m[alias] = fs
+	return ok
+}
+
+// Delete removes an existing alias.
+// It returns true if the alias existed.
+func (da *dirAliases) Delete(alias string) bool {
+	da.mu.RLock()
+	defer da.mu.RUnlock()
+	_, ok := da.m[alias]
+	delete(da.m, alias)
+	return ok
 }
 
 func (da *dirAliases) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !(strings.Count(r.URL.Path, "/") >= 2 && len(r.URL.Path) > 2) {
+		http.NotFound(w, r)
+		return
+	}
+	slashIndex := strings.Index(r.URL.Path[1:], "/")
+	if slashIndex == -1 {
+		http.NotFound(w, r)
+		return
+	}
+	alias := r.URL.Path[1 : slashIndex+1]
+	r.URL.Path = r.URL.Path[1+slashIndex:]
+
+	da.mu.RLock()
+	defer da.mu.RUnlock()
+	fs, ok := da.m[alias]
+	if !ok {
+		http.Error(w, fmt.Sprintf("alias %q not found", alias), http.StatusNotFound)
+		return
+	}
+	fs.ServeHTTP(w, r)
+}
+
+func newDirAliases() *dirAliases {
+	return &dirAliases{
+		m:                 make(map[string]FileServer),
+		FileServerFactory: stdFileServerFactory,
+	}
 }
 
 type dirServer struct {
@@ -28,7 +98,7 @@ type dirServer struct {
 
 func newDirServer(addr string) *dirServer {
 	return &dirServer{
-		DirAliases: &dirAliases{M: make(map[string]string)},
+		DirAliases: newDirAliases(),
 		Addr:       addr,
 		started:    make(chan struct{}),
 	}
