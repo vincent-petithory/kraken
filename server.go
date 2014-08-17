@@ -9,12 +9,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vincent-petithory/kraken/fileserver"
 )
 
 type DirAliases struct {
-	m                 map[string]FileServer
-	mu                sync.RWMutex
-	FileServerCreator FileServerCreator
+	m   map[string]fileserver.Server
+	mu  sync.RWMutex
+	fsf fileserver.Factory
 }
 
 func (da *DirAliases) List() []string {
@@ -41,12 +43,12 @@ func (da *DirAliases) Get(alias string) string {
 
 // Put registers an alias for the given path.
 // It returns true if the alias already exists.
-func (da *DirAliases) Put(alias string, path string) bool {
+func (da *DirAliases) Put(alias string, path string, fsType string, fsParams fileserver.Params) bool {
 	da.mu.Lock()
 	defer da.mu.Unlock()
 	_, ok := da.m[alias]
 
-	fs := da.FileServerCreator(path)
+	fs := da.fsf.New(path, fsType, fsParams)
 	da.m[alias] = fs
 	return ok
 }
@@ -84,10 +86,10 @@ func (da *DirAliases) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fs.ServeHTTP(w, r)
 }
 
-func NewDirAliases() *DirAliases {
+func NewDirAliases(fsf fileserver.Factory) *DirAliases {
 	return &DirAliases{
-		m:                 make(map[string]FileServer),
-		FileServerCreator: StdFileServerCreator,
+		m:   make(map[string]fileserver.Server),
+		fsf: fsf,
 	}
 }
 
@@ -100,9 +102,9 @@ type Server struct {
 	started    chan struct{}
 }
 
-func NewServer(addr string) *Server {
+func NewServer(addr string, fsf fileserver.Factory) *Server {
 	return &Server{
-		DirAliases: NewDirAliases(),
+		DirAliases: NewDirAliases(fsf),
 		Addr:       addr,
 		started:    make(chan struct{}),
 	}
@@ -181,23 +183,25 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 	return tc, nil
 }
 
-func NewServerPool() *ServerPool {
-	return &ServerPool{
-		Srvs:  make([]*Server, 0),
-		SrvCh: make(chan *Server),
-	}
-}
-
 type ServerPool struct {
 	Srvs  []*Server
 	SrvCh chan *Server
+	fsf   fileserver.Factory
+}
+
+func NewServerPool(fsf fileserver.Factory) *ServerPool {
+	return &ServerPool{
+		Srvs:  make([]*Server, 0),
+		SrvCh: make(chan *Server),
+		fsf:   fsf,
+	}
 }
 
 func (sp *ServerPool) Add(addr string) (*Server, error) {
 	if err := checkAddr(addr); err != nil {
 		return nil, err
 	}
-	ds := NewServer(addr)
+	ds := NewServer(addr, sp.fsf)
 	sp.SrvCh <- ds
 	<-ds.started
 	sp.Srvs = append(sp.Srvs, ds)

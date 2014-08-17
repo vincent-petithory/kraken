@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/vincent-petithory/kraken"
+	"github.com/vincent-petithory/kraken/fileserver"
 )
 
 type mockFileServer struct {
@@ -20,8 +21,8 @@ func (fs mockFileServer) Root() string {
 }
 
 func TestDirAliasHandler(t *testing.T) {
-	da := kraken.NewDirAliases()
-	da.FileServerCreator = kraken.FileServerCreator(func(root string) kraken.FileServer {
+	fsf := make(fileserver.Factory)
+	if err := fsf.Register("mock", fileserver.Constructor(func(root string, params fileserver.Params) fileserver.Server {
 		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			io.WriteString(w, r.URL.Path)
@@ -32,7 +33,10 @@ func TestDirAliasHandler(t *testing.T) {
 				return root
 			},
 		}
-	})
+	})); err != nil {
+		t.Fatal(err)
+	}
+	da := kraken.NewDirAliases(fsf)
 
 	tests := []struct {
 		Alias  string
@@ -44,7 +48,7 @@ func TestDirAliasHandler(t *testing.T) {
 		{"", "/", http.StatusNotFound},
 	}
 	for _, test := range tests {
-		da.Put(test.Alias, "whatever")
+		da.Put(test.Alias, "whatever", "mock", nil)
 
 		w := httptest.NewRecorder()
 		r, err := http.NewRequest("GET", fmt.Sprintf("/%s%s", test.Alias, test.Path), nil)

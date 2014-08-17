@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+
+	"github.com/vincent-petithory/kraken/fileserver"
 )
 
 type serverPoolAdminHandler struct {
@@ -23,6 +25,7 @@ const (
 	routeServersSelf            = "servers.self"
 	routeServersSelfAliases     = "servers.self.aliases"
 	routeServersSelfAliasesSelf = "servers.self.aliases.self"
+	routeFileservers            = "fileservers"
 )
 
 type adminApiErrorType string
@@ -68,6 +71,9 @@ func NewServerPoolAdminHandler(serverPool *ServerPool) *serverPoolAdminHandler {
 		"PUT":    http.HandlerFunc(spah.createServerAlias),
 		"DELETE": http.HandlerFunc(spah.removeServerAlias),
 	}).Name(routeServersSelfAliasesSelf)
+	apiRouter.Handle("/fileservers", handlers.MethodHandler{
+		"GET": http.HandlerFunc(spah.getFileServers),
+	}).Name(routeFileservers)
 	spah.h = r
 	spah.router = r
 	return &spah
@@ -288,7 +294,9 @@ func (spah *serverPoolAdminHandler) getServerAlias(w http.ResponseWriter, r *htt
 }
 
 type createServerAliasRequest struct {
-	Path string `json:"path"`
+	Path     string            `json:"path"`
+	FsType   string            `json:"fs_type"`
+	FsParams fileserver.Params `json:"fs_params"`
 }
 
 func (spah *serverPoolAdminHandler) createServerAlias(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +311,7 @@ func (spah *serverPoolAdminHandler) createServerAlias(w http.ResponseWriter, r *
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_ = srv.DirAliases.Put(alias, req.Path)
+	_ = srv.DirAliases.Put(alias, req.Path, req.FsType, req.FsParams)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -319,4 +327,11 @@ func (spah *serverPoolAdminHandler) removeServerAlias(w http.ResponseWriter, r *
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func (spah *serverPoolAdminHandler) getFileServers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(spah.ServerPool.fsf.Types()); err != nil {
+		log.Print(err)
+	}
 }

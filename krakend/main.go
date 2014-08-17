@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/vincent-petithory/kraken"
+	"github.com/vincent-petithory/kraken/fileserver"
 )
 
 var adminAddr string
@@ -17,8 +18,11 @@ func init() {
 }
 
 func main() {
+	// Register fileservers
+	fsf := make(fileserver.Factory)
+
 	// Init server pool, run existing servers and listen for new ones
-	serverPool := kraken.NewServerPool()
+	serverPool := kraken.NewServerPool(fsf)
 	go serverPool.ListenAndRun()
 
 	// Start administration server
