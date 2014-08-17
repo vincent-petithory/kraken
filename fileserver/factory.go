@@ -31,7 +31,7 @@ func (f Factory) Register(name string, constructor Constructor) error {
 	if constructor == nil {
 		return errors.New("fileserver: constructor is nil")
 	}
-	if _, ok := f[name]; ok {
+	if _, ok := f[name]; ok || name == "default" {
 		return fmt.Errorf("fileserver: type %q is registered", name)
 	}
 	f[name] = constructor
@@ -39,10 +39,11 @@ func (f Factory) Register(name string, constructor Constructor) error {
 }
 
 func (f Factory) Types() []string {
-	types := make([]string, 0, len(f))
+	types := make([]string, 0, len(f)+1)
 	for typ := range f {
 		types = append(types, typ)
 	}
+	types = append(types, "default")
 	return types
 }
 
