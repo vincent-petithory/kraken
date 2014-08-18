@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/vincent-petithory/kraken"
 	"github.com/vincent-petithory/kraken/fileserver"
@@ -12,8 +13,12 @@ import (
 
 var adminAddr string
 
+// Environnement var for the addr of the admin service.
+// It takes precedence on the -http flag.
+const envKrakendAddr = "KRAKEND_ADDR"
+
 func init() {
-	flag.StringVar(&adminAddr, "http", ":4214", "The addr on which the admin http api will listen on. Defaults to :4214")
+	flag.StringVar(&adminAddr, "http", ":4214", "The address on which the admin http api will listen on. Defaults to :4214")
 	flag.Parse()
 }
 
@@ -28,6 +33,9 @@ func main() {
 	// Start administration server
 	spah := kraken.NewServerPoolAdminHandler(serverPool)
 
+	if envAdminAddr := os.Getenv(envKrakendAddr); envAdminAddr != "" {
+		adminAddr = envAdminAddr
+	}
 	ln, err := net.Listen("tcp", adminAddr)
 	if err != nil {
 		log.Fatal(err)
