@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 
-	"github.com/vincent-petithory/kraken"
+	"github.com/vincent-petithory/kraken/admin"
 )
 
 type client struct {
@@ -42,7 +44,7 @@ func (c *client) AddServerWithRandomPort(bindAddr string) error {
 }
 
 func (c *client) AddServer(bindAddr string, port uint16) error {
-	data := kraken.CreateServerRequest{BindAddress: bindAddr}
+	data := admin.CreateServerRequest{BindAddress: bindAddr}
 	r, err := c.newRequest("PUT", fmt.Sprintf("/api/servers/%d", port), data)
 	resp, err := c.c.Do(r)
 	if err != nil {
@@ -53,10 +55,11 @@ func (c *client) AddServer(bindAddr string, port uint16) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("error %d: %s\n", resp.StatusCode, resp.Status)
 	}
-	var serverData kraken.ServerData
-	if err := json.NewDecoder(resp.Body).Decode(&serverData); err != nil {
+	var srv admin.Server
+	if err := json.NewDecoder(resp.Body).Decode(&srv); err != nil {
 		return err
 	}
-	fmt.Printf("server available on %s:%d\n", serverData.BindAddress, serverData.Port)
+	addr := net.JoinHostPort(srv.BindAddress, strconv.Itoa(int(srv.Port)))
+	fmt.Printf("server available on %s\n", addr)
 	return nil
 }

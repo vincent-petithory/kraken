@@ -1,4 +1,4 @@
-package kraken
+package admin
 
 import (
 	"bytes"
@@ -12,11 +12,12 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/vincent-petithory/kraken"
 	"github.com/vincent-petithory/kraken/fileserver"
 )
 
 type serverPoolAdminHandler struct {
-	*ServerPool
+	*kraken.ServerPool
 	h      http.Handler
 	router *mux.Router
 }
@@ -49,7 +50,7 @@ func (e *AdminAPIError) Error() string {
 	return e.Msg
 }
 
-func NewServerPoolAdminHandler(serverPool *ServerPool) *serverPoolAdminHandler {
+func NewServerPoolAdminHandler(serverPool *kraken.ServerPool) *serverPoolAdminHandler {
 	spah := serverPoolAdminHandler{ServerPool: serverPool}
 	r := mux.NewRouter()
 	apiRouter := r.PathPrefix("/api/").Subrouter()
@@ -95,31 +96,31 @@ func (spah *serverPoolAdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Req
 	spah.h.ServeHTTP(w, r)
 }
 
-type ServerData struct {
-	BindAddress string      `json:"bind_address"`
-	Port        uint16      `json:"port"`
-	Aliases     []AliasData `json:"aliases"`
+type Server struct {
+	BindAddress string  `json:"bind_address"`
+	Port        uint16  `json:"port"`
+	Aliases     []Alias `json:"aliases"`
 }
 
-func newServerDataFromServer(srv *Server) *ServerData {
+func newServerDataFromServer(srv *kraken.Server) *Server {
 	aliasNames := srv.DirAliases.List()
-	aliases := make([]AliasData, 0, len(aliasNames))
+	aliases := make([]Alias, 0, len(aliasNames))
 	for _, alias := range aliasNames {
-		aliases = append(aliases, AliasData{
+		aliases = append(aliases, Alias{
 			ID:   aliasID(alias),
 			Name: alias,
 			Path: srv.DirAliases.Get(alias),
 		})
 	}
 	host, _, _ := net.SplitHostPort(srv.Addr)
-	return &ServerData{
+	return &Server{
 		BindAddress: host,
 		Port:        srv.Port,
 		Aliases:     aliases,
 	}
 }
 
-type AliasData struct {
+type Alias struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Path string `json:"path"`
@@ -132,7 +133,7 @@ func aliasID(alias string) string {
 	return fmt.Sprintf("%x", b)[0:7]
 }
 
-func (spah *serverPoolAdminHandler) serverOr404(w http.ResponseWriter, r *http.Request) *Server {
+func (spah *serverPoolAdminHandler) serverOr404(w http.ResponseWriter, r *http.Request) *kraken.Server {
 	sport := mux.Vars(r)["port"]
 	port, err := strconv.Atoi(sport)
 	if err != nil {
@@ -149,11 +150,11 @@ func (spah *serverPoolAdminHandler) serverOr404(w http.ResponseWriter, r *http.R
 
 func (spah *serverPoolAdminHandler) getServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	srvsData := make([]ServerData, 0, len(spah.ServerPool.Srvs))
+	srvs := make([]Server, 0, len(spah.ServerPool.Srvs))
 	for _, srv := range spah.ServerPool.Srvs {
-		srvsData = append(srvsData, *newServerDataFromServer(srv))
+		srvs = append(srvs, *newServerDataFromServer(srv))
 	}
-	if err := json.NewEncoder(w).Encode(srvsData); err != nil {
+	if err := json.NewEncoder(w).Encode(srvs); err != nil {
 		log.Print(err)
 	}
 }
@@ -188,7 +189,7 @@ func (spah *serverPoolAdminHandler) createServerWithRandomPort(w http.ResponseWr
 		return
 	}
 	// Wait for the server to be started
-	<-srv.started
+	<-srv.Started
 	spah.writeLocation(w, routeServersSelf, "port", strconv.Itoa(int(srv.Port)))
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
@@ -217,7 +218,7 @@ func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.
 		return
 	}
 	// Wait for the server to be started
-	<-srv.started
+	<-srv.Started
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
 		log.Print(err)
@@ -270,9 +271,9 @@ func (spah *serverPoolAdminHandler) getServerAliases(w http.ResponseWriter, r *h
 		return
 	}
 	aliasNames := srv.DirAliases.List()
-	aliases := make([]AliasData, 0, len(aliasNames))
+	aliases := make([]Alias, 0, len(aliasNames))
 	for _, alias := range aliasNames {
-		aliases = append(aliases, AliasData{
+		aliases = append(aliases, Alias{
 			ID:   aliasID(alias),
 			Name: alias,
 			Path: srv.DirAliases.Get(alias),
@@ -315,7 +316,7 @@ func (spah *serverPoolAdminHandler) getServerAlias(w http.ResponseWriter, r *htt
 		return
 	}
 
-	aliasData := AliasData{
+	aliasData := Alias{
 		ID:   aliasID(alias),
 		Name: alias,
 		Path: srv.DirAliases.Get(alias),
@@ -349,7 +350,7 @@ func (spah *serverPoolAdminHandler) createServerAlias(w http.ResponseWriter, r *
 		return
 	}
 
-	aliasData := AliasData{
+	aliasData := Alias{
 		ID:   aliasID(req.Alias),
 		Name: req.Alias,
 		Path: srv.DirAliases.Get(req.Alias),
@@ -382,9 +383,11 @@ func (spah *serverPoolAdminHandler) removeServerAlias(w http.ResponseWriter, r *
 	w.WriteHeader(http.StatusOK)
 }
 
+type FileServerTypes []string
+
 func (spah *serverPoolAdminHandler) getFileServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(spah.ServerPool.fsf.Types()); err != nil {
+	if err := json.NewEncoder(w).Encode(FileServerTypes(spah.ServerPool.Fsf.Types())); err != nil {
 		log.Print(err)
 	}
 }

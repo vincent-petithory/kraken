@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/vincent-petithory/kraken"
+	"github.com/vincent-petithory/kraken/admin"
 	"github.com/vincent-petithory/kraken/fileserver"
 )
 
@@ -31,7 +32,7 @@ func main() {
 	go serverPool.ListenAndRun()
 
 	// Start administration server
-	spah := kraken.NewServerPoolAdminHandler(serverPool)
+	spah := admin.NewServerPoolAdminHandler(serverPool)
 
 	if envAdminAddr := os.Getenv(envKrakendAddr); envAdminAddr != "" {
 		adminAddr = envAdminAddr

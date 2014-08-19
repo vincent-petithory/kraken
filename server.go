@@ -117,16 +117,16 @@ type Server struct {
 	DirAliases *DirAliases
 	Addr       string
 	Port       uint16
+	Started    chan struct{}
 	srv        *http.Server
 	ln         net.Listener
-	started    chan struct{}
 }
 
 func NewServer(addr string, fsf fileserver.Factory) *Server {
 	return &Server{
 		DirAliases: NewDirAliases(fsf),
 		Addr:       addr,
-		started:    make(chan struct{}),
+		Started:    make(chan struct{}),
 	}
 }
 
@@ -152,7 +152,7 @@ func (ds *Server) ListenAndServe() error {
 		Listener: tcpKeepAliveListener{ln.(*net.TCPListener)},
 	}
 
-	close(ds.started)
+	close(ds.Started)
 	if err := ds.srv.Serve(ds.ln); err != nil {
 		return err
 	}
@@ -206,14 +206,14 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 type ServerPool struct {
 	Srvs  []*Server
 	SrvCh chan *Server
-	fsf   fileserver.Factory
+	Fsf   fileserver.Factory
 }
 
 func NewServerPool(fsf fileserver.Factory) *ServerPool {
 	return &ServerPool{
 		Srvs:  make([]*Server, 0),
 		SrvCh: make(chan *Server),
-		fsf:   fsf,
+		Fsf:   fsf,
 	}
 }
 
@@ -221,9 +221,9 @@ func (sp *ServerPool) Add(addr string) (*Server, error) {
 	if err := checkAddr(addr); err != nil {
 		return nil, err
 	}
-	ds := NewServer(addr, sp.fsf)
+	ds := NewServer(addr, sp.Fsf)
 	sp.SrvCh <- ds
-	<-ds.started
+	<-ds.Started
 	sp.Srvs = append(sp.Srvs, ds)
 	return ds, nil
 }
