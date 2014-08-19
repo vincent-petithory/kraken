@@ -29,23 +29,23 @@ const (
 	routeFileservers            = "fileservers"
 )
 
-type adminApiErrorType string
+type AdminAPIErrorType string
 
 const (
-	apiErrTypeBadRequest  adminApiErrorType = "bad_request_error"
-	apiErrTypeApiInternal                   = "api_internal_error"
+	apiErrTypeBadRequest  AdminAPIErrorType = "bad_request_error"
+	apiErrTypeAPIInternal                   = "api_internal_error"
 )
 
-type adminApiError struct {
-	Type adminApiErrorType `json:"type"`
+type AdminAPIError struct {
+	Type AdminAPIErrorType `json:"type"`
 	Msg  string            `json:"msg"`
 }
 
-func (e *adminApiError) String() string {
+func (e *AdminAPIError) String() string {
 	return fmt.Sprintf("%s: %s", e.Type, e.Msg)
 }
 
-func (e *adminApiError) Error() string {
+func (e *AdminAPIError) Error() string {
 	return e.Msg
 }
 
@@ -95,31 +95,31 @@ func (spah *serverPoolAdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Req
 	spah.h.ServeHTTP(w, r)
 }
 
-type serverData struct {
+type ServerData struct {
 	BindAddress string      `json:"bind_address"`
 	Port        uint16      `json:"port"`
-	Aliases     []aliasData `json:"aliases"`
+	Aliases     []AliasData `json:"aliases"`
 }
 
-func newServerDataFromServer(srv *Server) *serverData {
+func newServerDataFromServer(srv *Server) *ServerData {
 	aliasNames := srv.DirAliases.List()
-	aliases := make([]aliasData, 0, len(aliasNames))
+	aliases := make([]AliasData, 0, len(aliasNames))
 	for _, alias := range aliasNames {
-		aliases = append(aliases, aliasData{
+		aliases = append(aliases, AliasData{
 			ID:   aliasID(alias),
 			Name: alias,
 			Path: srv.DirAliases.Get(alias),
 		})
 	}
 	host, _, _ := net.SplitHostPort(srv.Addr)
-	return &serverData{
+	return &ServerData{
 		BindAddress: host,
 		Port:        srv.Port,
 		Aliases:     aliases,
 	}
 }
 
-type aliasData struct {
+type AliasData struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Path string `json:"path"`
@@ -149,7 +149,7 @@ func (spah *serverPoolAdminHandler) serverOr404(w http.ResponseWriter, r *http.R
 
 func (spah *serverPoolAdminHandler) getServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	srvsData := make([]serverData, 0, len(spah.ServerPool.Srvs))
+	srvsData := make([]ServerData, 0, len(spah.ServerPool.Srvs))
 	for _, srv := range spah.ServerPool.Srvs {
 		srvsData = append(srvsData, *newServerDataFromServer(srv))
 	}
@@ -169,12 +169,12 @@ func (spah *serverPoolAdminHandler) getServer(w http.ResponseWriter, r *http.Req
 	}
 }
 
-type createServerRequest struct {
+type CreateServerRequest struct {
 	BindAddress string `json:"bind_address"`
 }
 
 func (spah *serverPoolAdminHandler) createServerWithRandomPort(w http.ResponseWriter, r *http.Request) {
-	var req createServerRequest
+	var req CreateServerRequest
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -197,7 +197,7 @@ func (spah *serverPoolAdminHandler) createServerWithRandomPort(w http.ResponseWr
 }
 
 func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.Request) {
-	var req createServerRequest
+	var req CreateServerRequest
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -225,7 +225,7 @@ func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.
 }
 
 func (spah *serverPoolAdminHandler) removeServers(w http.ResponseWriter, r *http.Request) {
-	errs := make([]error, 0)
+	var errs []error
 	for _, srv := range spah.ServerPool.Srvs {
 		if ok, err := spah.ServerPool.Remove(srv.Port); err != nil {
 			errs = append(errs, err)
@@ -239,7 +239,7 @@ func (spah *serverPoolAdminHandler) removeServers(w http.ResponseWriter, r *http
 		for _, err := range errs {
 			fmt.Fprintln(&bufMsg, err.Error())
 		}
-		apiErr := &adminApiError{apiErrTypeApiInternal, bufMsg.String()}
+		apiErr := &AdminAPIError{apiErrTypeAPIInternal, bufMsg.String()}
 		w.WriteHeader(http.StatusInternalServerError)
 		if err := json.NewEncoder(w).Encode(apiErr); err != nil {
 			log.Print(err)
@@ -270,9 +270,9 @@ func (spah *serverPoolAdminHandler) getServerAliases(w http.ResponseWriter, r *h
 		return
 	}
 	aliasNames := srv.DirAliases.List()
-	aliases := make([]aliasData, 0, len(aliasNames))
+	aliases := make([]AliasData, 0, len(aliasNames))
 	for _, alias := range aliasNames {
-		aliases = append(aliases, aliasData{
+		aliases = append(aliases, AliasData{
 			ID:   aliasID(alias),
 			Name: alias,
 			Path: srv.DirAliases.Get(alias),
@@ -315,7 +315,7 @@ func (spah *serverPoolAdminHandler) getServerAlias(w http.ResponseWriter, r *htt
 		return
 	}
 
-	aliasData := aliasData{
+	aliasData := AliasData{
 		ID:   aliasID(alias),
 		Name: alias,
 		Path: srv.DirAliases.Get(alias),
@@ -326,7 +326,7 @@ func (spah *serverPoolAdminHandler) getServerAlias(w http.ResponseWriter, r *htt
 	}
 }
 
-type createServerAliasRequest struct {
+type CreateServerAliasRequest struct {
 	Alias    string            `json:"alias"`
 	Path     string            `json:"path"`
 	FsType   string            `json:"fs_type"`
@@ -339,7 +339,7 @@ func (spah *serverPoolAdminHandler) createServerAlias(w http.ResponseWriter, r *
 		return
 	}
 	defer r.Body.Close()
-	var req createServerAliasRequest
+	var req CreateServerAliasRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -349,7 +349,7 @@ func (spah *serverPoolAdminHandler) createServerAlias(w http.ResponseWriter, r *
 		return
 	}
 
-	aliasData := aliasData{
+	aliasData := AliasData{
 		ID:   aliasID(req.Alias),
 		Name: req.Alias,
 		Path: srv.DirAliases.Get(req.Alias),
