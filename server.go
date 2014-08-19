@@ -1,6 +1,7 @@
 package kraken
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -41,16 +42,28 @@ func (da *DirAliases) Get(alias string) string {
 	return fs.Root()
 }
 
+// Alias has an invalid value.
+var ErrInvalidAlias = errors.New("invalid alias value")
+
 // Put registers an alias for the given path.
 // It returns true if the alias already exists.
-func (da *DirAliases) Put(alias string, path string, fsType string, fsParams fileserver.Params) bool {
+func (da *DirAliases) Put(alias string, path string, fsType string, fsParams fileserver.Params) (bool, error) {
 	da.mu.Lock()
 	defer da.mu.Unlock()
+
+	// alias must start with /
+	if !strings.HasPrefix(alias, "/") {
+		return false, ErrInvalidAlias
+	}
+	// if alias is not "/" and has a trailing /, reject it
+	if alias != "/" && strings.HasSuffix(alias, "/") {
+		return false, ErrInvalidAlias
+	}
 	_, ok := da.m[alias]
 
 	fs := da.fsf.New(path, fsType, fsParams)
 	da.m[alias] = fs
-	return ok
+	return ok, nil
 }
 
 // Delete removes an existing alias.
@@ -64,21 +77,28 @@ func (da *DirAliases) Delete(alias string) bool {
 }
 
 func (da *DirAliases) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !(strings.Count(r.URL.Path, "/") >= 2 && len(r.URL.Path) > 2) {
-		http.NotFound(w, r)
-		return
-	}
-	slashIndex := strings.Index(r.URL.Path[1:], "/")
-	if slashIndex == -1 {
-		http.NotFound(w, r)
-		return
-	}
-	alias := r.URL.Path[1 : slashIndex+1]
-	r.URL.Path = r.URL.Path[1+slashIndex:]
-
+	var (
+		maxAliasLen int
+		alias       string
+	)
 	da.mu.RLock()
-	defer da.mu.RUnlock()
+	for a := range da.m {
+		if strings.HasPrefix(r.URL.Path, a) && len(a) >= maxAliasLen {
+			maxAliasLen = len(a)
+			alias = a
+		}
+	}
+	if maxAliasLen == 0 {
+		http.NotFound(w, r)
+		da.mu.RUnlock()
+		return
+	}
+
+	if alias != "/" {
+		r.URL.Path = r.URL.Path[maxAliasLen:]
+	}
 	fs, ok := da.m[alias]
+	da.mu.RUnlock()
 	if !ok {
 		http.Error(w, fmt.Sprintf("alias %q not found", alias), http.StatusNotFound)
 		return

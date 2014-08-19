@@ -36,22 +36,28 @@ func TestDirAliasHandler(t *testing.T) {
 	})); err != nil {
 		t.Fatal(err)
 	}
-	da := kraken.NewDirAliases(fsf)
 
 	tests := []struct {
-		Alias  string
-		Path   string
-		Status int
+		Alias   string
+		Path    string
+		ReqPath string
+		Status  int
 	}{
-		{"foo", "/bar", http.StatusOK},
-		{"baz", "/", http.StatusOK},
-		{"", "/", http.StatusNotFound},
+		{"/foo", "/bar", "/foo/bar", http.StatusOK},
+		{"/baz", "/", "/baz/", http.StatusOK},
+		{"/", "/home/meow/Public", "/home/meow/Public", http.StatusOK},
+		{"/bar", "/", "/meow", http.StatusNotFound},
 	}
 	for _, test := range tests {
-		da.Put(test.Alias, "whatever", "mock", nil)
+		da := kraken.NewDirAliases(fsf)
+		_, err := da.Put(test.Alias, test.Path, "mock", nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
 
 		w := httptest.NewRecorder()
-		r, err := http.NewRequest("GET", fmt.Sprintf("/%s%s", test.Alias, test.Path), nil)
+		r, err := http.NewRequest("GET", fmt.Sprintf(test.ReqPath), nil)
 		if err != nil {
 			t.Fatal(err)
 		}

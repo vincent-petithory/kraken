@@ -311,7 +311,11 @@ func (spah *serverPoolAdminHandler) createServerAlias(w http.ResponseWriter, r *
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_ = srv.DirAliases.Put(alias, req.Path, req.FsType, req.FsParams)
+	if _, err := srv.DirAliases.Put(alias, req.Path, req.FsType, req.FsParams); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
