@@ -23,11 +23,11 @@ type serverPoolAdminHandler struct {
 }
 
 const (
-	routeServers                = "servers"
-	routeServersSelf            = "servers.self"
-	routeServersSelfAliases     = "servers.self.aliases"
-	routeServersSelfAliasesSelf = "servers.self.aliases.self"
-	routeFileservers            = "fileservers"
+	routeServers               = "servers"
+	routeServersSelf           = "servers.self"
+	routeServersSelfMounts     = "servers.self.mounts"
+	routeServersSelfMountsSelf = "servers.self.mounts.self"
+	routeFileservers           = "fileservers"
 )
 
 type AdminAPIErrorType string
@@ -64,15 +64,15 @@ func NewServerPoolAdminHandler(serverPool *kraken.ServerPool) *serverPoolAdminHa
 		"PUT":    http.HandlerFunc(spah.createServer),
 		"DELETE": http.HandlerFunc(spah.removeServer),
 	}).Name(routeServersSelf)
-	apiRouter.Handle("/servers/{port:[0-9]{1,5}}/aliases", handlers.MethodHandler{
-		"GET":    http.HandlerFunc(spah.getServerAliases),
-		"POST":   http.HandlerFunc(spah.createServerAlias),
-		"DELETE": http.HandlerFunc(spah.removeServerAliases),
-	}).Name(routeServersSelfAliases)
-	apiRouter.Handle("/servers/{port:[0-9]{1,5}}/aliases/{alias}", handlers.MethodHandler{
-		"GET":    http.HandlerFunc(spah.getServerAlias),
-		"DELETE": http.HandlerFunc(spah.removeServerAlias),
-	}).Name(routeServersSelfAliasesSelf)
+	apiRouter.Handle("/servers/{port:[0-9]{1,5}}/mounts", handlers.MethodHandler{
+		"GET":    http.HandlerFunc(spah.getServerMounts),
+		"POST":   http.HandlerFunc(spah.createServerMount),
+		"DELETE": http.HandlerFunc(spah.removeServerMounts),
+	}).Name(routeServersSelfMounts)
+	apiRouter.Handle("/servers/{port:[0-9]{1,5}}/mounts/{mount}", handlers.MethodHandler{
+		"GET":    http.HandlerFunc(spah.getServerMount),
+		"DELETE": http.HandlerFunc(spah.removeServerMount),
+	}).Name(routeServersSelfMountsSelf)
 	apiRouter.Handle("/fileservers", handlers.MethodHandler{
 		"GET": http.HandlerFunc(spah.getFileServers),
 	}).Name(routeFileservers)
@@ -99,36 +99,36 @@ func (spah *serverPoolAdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Req
 type Server struct {
 	BindAddress string  `json:"bind_address"`
 	Port        uint16  `json:"port"`
-	Aliases     []Alias `json:"aliases"`
+	Mounts      []Mount `json:"mounts"`
 }
 
 func newServerDataFromServer(srv *kraken.Server) *Server {
-	aliasNames := srv.DirAliases.List()
-	aliases := make([]Alias, 0, len(aliasNames))
-	for _, alias := range aliasNames {
-		aliases = append(aliases, Alias{
-			ID:   aliasID(alias),
-			Name: alias,
-			Path: srv.DirAliases.Get(alias),
+	mountTargets := srv.MountMap.Targets()
+	mounts := make([]Mount, 0, len(mountTargets))
+	for _, mountTarget := range mountTargets {
+		mounts = append(mounts, Mount{
+			ID:     mountID(mountTarget),
+			Source: srv.MountMap.GetSource(mountTarget),
+			Target: mountTarget,
 		})
 	}
 	host, _, _ := net.SplitHostPort(srv.Addr)
 	return &Server{
 		BindAddress: host,
 		Port:        srv.Port,
-		Aliases:     aliases,
+		Mounts:      mounts,
 	}
 }
 
-type Alias struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Path string `json:"path"`
+type Mount struct {
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	Target string `json:"target"`
 }
 
-func aliasID(alias string) string {
+func mountID(target string) string {
 	h := sha1.New()
-	h.Write([]byte(alias))
+	h.Write([]byte(target))
 	b := h.Sum(nil)
 	return fmt.Sprintf("%x", b)[0:7]
 }
@@ -265,119 +265,119 @@ func (spah *serverPoolAdminHandler) removeServer(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusOK)
 }
 
-func (spah *serverPoolAdminHandler) getServerAliases(w http.ResponseWriter, r *http.Request) {
+func (spah *serverPoolAdminHandler) getServerMounts(w http.ResponseWriter, r *http.Request) {
 	srv := spah.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
-	aliasNames := srv.DirAliases.List()
-	aliases := make([]Alias, 0, len(aliasNames))
-	for _, alias := range aliasNames {
-		aliases = append(aliases, Alias{
-			ID:   aliasID(alias),
-			Name: alias,
-			Path: srv.DirAliases.Get(alias),
+	mountTargets := srv.MountMap.Targets()
+	mounts := make([]Mount, 0, len(mountTargets))
+	for _, mountTarget := range mountTargets {
+		mounts = append(mounts, Mount{
+			ID:     mountID(mountTarget),
+			Source: srv.MountMap.GetSource(mountTarget),
+			Target: mountTarget,
 		})
 	}
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(aliases); err != nil {
+	if err := json.NewEncoder(w).Encode(mounts); err != nil {
 		log.Print(err)
 	}
 }
 
-func (spah *serverPoolAdminHandler) removeServerAliases(w http.ResponseWriter, r *http.Request) {
+func (spah *serverPoolAdminHandler) removeServerMounts(w http.ResponseWriter, r *http.Request) {
 	srv := spah.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
-	aliases := srv.DirAliases.List()
-	for _, alias := range aliases {
-		srv.DirAliases.Delete(alias)
+	mountTargets := srv.MountMap.Targets()
+	for _, mountTarget := range mountTargets {
+		srv.MountMap.DeleteTarget(mountTarget)
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func (spah *serverPoolAdminHandler) getServerAlias(w http.ResponseWriter, r *http.Request) {
+func (spah *serverPoolAdminHandler) getServerMount(w http.ResponseWriter, r *http.Request) {
 	srv := spah.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
-	reqAliasID := mux.Vars(r)["alias"]
-	var alias string
-	for _, a := range srv.DirAliases.List() {
-		if aliasID(a) == reqAliasID {
-			alias = a
+	reqMountID := mux.Vars(r)["mount"]
+	var mountTarget string
+	for _, mt := range srv.MountMap.Targets() {
+		if mountID(mt) == reqMountID {
+			mountTarget = mt
 			break
 		}
 	}
-	aliasPath := srv.DirAliases.Get(alias)
-	if aliasPath == "" {
-		http.Error(w, fmt.Sprintf("server %d has no alias %q", srv.Port, alias), http.StatusNotFound)
+	mountSource := srv.MountMap.GetSource(mountTarget)
+	if mountSource == "" {
+		http.Error(w, fmt.Sprintf("server %d has no mount target %q", srv.Port, mountTarget), http.StatusNotFound)
 		return
 	}
 
-	aliasData := Alias{
-		ID:   aliasID(alias),
-		Name: alias,
-		Path: srv.DirAliases.Get(alias),
+	mount := Mount{
+		ID:     mountID(mountTarget),
+		Source: srv.MountMap.GetSource(mountTarget),
+		Target: mountTarget,
 	}
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(aliasData); err != nil {
+	if err := json.NewEncoder(w).Encode(mount); err != nil {
 		log.Print(err)
 	}
 }
 
-type CreateServerAliasRequest struct {
-	Alias    string            `json:"alias"`
-	Path     string            `json:"path"`
+type CreateServerMountRequest struct {
+	Target   string            `json:"target"`
+	Source   string            `json:"source"`
 	FsType   string            `json:"fs_type"`
 	FsParams fileserver.Params `json:"fs_params"`
 }
 
-func (spah *serverPoolAdminHandler) createServerAlias(w http.ResponseWriter, r *http.Request) {
+func (spah *serverPoolAdminHandler) createServerMount(w http.ResponseWriter, r *http.Request) {
 	srv := spah.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
 	defer r.Body.Close()
-	var req CreateServerAliasRequest
+	var req CreateServerMountRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := srv.DirAliases.Put(req.Alias, req.Path, req.FsType, req.FsParams); err != nil {
+	if _, err := srv.MountMap.Put(req.Target, req.Source, req.FsType, req.FsParams); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	aliasData := Alias{
-		ID:   aliasID(req.Alias),
-		Name: req.Alias,
-		Path: srv.DirAliases.Get(req.Alias),
+	mount := Mount{
+		ID:     mountID(req.Target),
+		Source: srv.MountMap.GetSource(req.Target),
+		Target: req.Target,
 	}
-	spah.writeLocation(w, routeServersSelfAliasesSelf, "alias", aliasData.ID)
+	spah.writeLocation(w, routeServersSelfMountsSelf, "mount", mount.ID)
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(aliasData); err != nil {
+	if err := json.NewEncoder(w).Encode(mount); err != nil {
 		log.Print(err)
 	}
 }
 
-func (spah *serverPoolAdminHandler) removeServerAlias(w http.ResponseWriter, r *http.Request) {
+func (spah *serverPoolAdminHandler) removeServerMount(w http.ResponseWriter, r *http.Request) {
 	srv := spah.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
-	reqAliasID := mux.Vars(r)["alias"]
-	var alias string
-	for _, a := range srv.DirAliases.List() {
-		if aliasID(a) == reqAliasID {
-			alias = a
+	reqMountID := mux.Vars(r)["mount"]
+	var mountTarget string
+	for _, mt := range srv.MountMap.Targets() {
+		if mountID(mt) == reqMountID {
+			mountTarget = mt
 			break
 		}
 	}
-	ok := srv.DirAliases.Delete(alias)
+	ok := srv.MountMap.DeleteTarget(mountTarget)
 	if !ok {
-		http.Error(w, fmt.Sprintf("server %d has no alias %q", srv.Port, alias), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("server %d has no mount target %q", srv.Port, mountTarget), http.StatusNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusOK)

@@ -14,119 +14,119 @@ import (
 	"github.com/vincent-petithory/kraken/fileserver"
 )
 
-type DirAliases struct {
+type MountMap struct {
 	m   map[string]fileserver.Server
 	mu  sync.RWMutex
 	fsf fileserver.Factory
 }
 
-func (da *DirAliases) List() []string {
-	da.mu.RLock()
-	defer da.mu.RUnlock()
-	aliases := make([]string, 0, len(da.m))
-	for alias := range da.m {
-		aliases = append(aliases, alias)
+func (mm *MountMap) Targets() []string {
+	mm.mu.RLock()
+	defer mm.mu.RUnlock()
+	mountTargets := make([]string, 0, len(mm.m))
+	for mountTarget := range mm.m {
+		mountTargets = append(mountTargets, mountTarget)
 	}
-	return aliases
+	return mountTargets
 }
 
-// Get retrieves the path for the given alias.
-// It returns "" if the alias doesn't exist.
-func (da *DirAliases) Get(alias string) string {
-	da.mu.RLock()
-	defer da.mu.RUnlock()
-	fs, ok := da.m[alias]
+// Get retrieves the source for the given mount target.
+// It returns "" if the mount target doesn't exist.
+func (mm *MountMap) GetSource(mountTarget string) string {
+	mm.mu.RLock()
+	defer mm.mu.RUnlock()
+	fs, ok := mm.m[mountTarget]
 	if !ok {
 		return ""
 	}
 	return fs.Root()
 }
 
-// Alias has an invalid value.
-var ErrInvalidAlias = errors.New("invalid alias value")
+// ErrInvalidMountTarget describes an invalid value for a mount target.
+var ErrInvalidMountTarget = errors.New("invalid mount target value")
 
-// Put registers an alias for the given path.
-// It returns true if the alias already exists.
-func (da *DirAliases) Put(alias string, path string, fsType string, fsParams fileserver.Params) (bool, error) {
-	da.mu.Lock()
-	defer da.mu.Unlock()
+// Put registers a mount target for the given mount source.
+// It returns true if the mount target already exists.
+func (mm *MountMap) Put(mountTarget string, mountSource string, fsType string, fsParams fileserver.Params) (bool, error) {
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
 
-	// alias must start with /
-	if !strings.HasPrefix(alias, "/") {
-		return false, ErrInvalidAlias
+	// mountTarget must start with /
+	if !strings.HasPrefix(mountTarget, "/") {
+		return false, ErrInvalidMountTarget
 	}
-	// if alias is not "/" and has a trailing /, reject it
-	if alias != "/" && strings.HasSuffix(alias, "/") {
-		return false, ErrInvalidAlias
+	// if mountTarget is not "/" and has a trailing /, reject it
+	if mountTarget != "/" && strings.HasSuffix(mountTarget, "/") {
+		return false, ErrInvalidMountTarget
 	}
-	_, ok := da.m[alias]
+	_, ok := mm.m[mountTarget]
 
-	fs := da.fsf.New(path, fsType, fsParams)
-	da.m[alias] = fs
+	fs := mm.fsf.New(mountSource, fsType, fsParams)
+	mm.m[mountTarget] = fs
 	return ok, nil
 }
 
-// Delete removes an existing alias.
-// It returns true if the alias existed.
-func (da *DirAliases) Delete(alias string) bool {
-	da.mu.RLock()
-	defer da.mu.RUnlock()
-	_, ok := da.m[alias]
-	delete(da.m, alias)
+// Delete removes an existing mount target.
+// It returns true if the mount target existed.
+func (mm *MountMap) DeleteTarget(mountTarget string) bool {
+	mm.mu.RLock()
+	defer mm.mu.RUnlock()
+	_, ok := mm.m[mountTarget]
+	delete(mm.m, mountTarget)
 	return ok
 }
 
-func (da *DirAliases) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (mm *MountMap) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var (
-		maxAliasLen int
-		alias       string
+		maxMountTargetLen int
+		mountTarget       string
 	)
-	da.mu.RLock()
-	for a := range da.m {
-		if strings.HasPrefix(r.URL.Path, a) && len(a) >= maxAliasLen {
-			maxAliasLen = len(a)
-			alias = a
+	mm.mu.RLock()
+	for t := range mm.m {
+		if strings.HasPrefix(r.URL.Path, t) && len(t) >= maxMountTargetLen {
+			maxMountTargetLen = len(t)
+			mountTarget = t
 		}
 	}
-	if maxAliasLen == 0 {
+	if maxMountTargetLen == 0 {
 		http.NotFound(w, r)
-		da.mu.RUnlock()
+		mm.mu.RUnlock()
 		return
 	}
 
-	if alias != "/" {
-		r.URL.Path = r.URL.Path[maxAliasLen:]
+	if mountTarget != "/" {
+		r.URL.Path = r.URL.Path[maxMountTargetLen:]
 	}
-	fs, ok := da.m[alias]
-	da.mu.RUnlock()
+	fs, ok := mm.m[mountTarget]
+	mm.mu.RUnlock()
 	if !ok {
-		http.Error(w, fmt.Sprintf("alias %q not found", alias), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("mount target %q not found", mountTarget), http.StatusNotFound)
 		return
 	}
 	fs.ServeHTTP(w, r)
 }
 
-func NewDirAliases(fsf fileserver.Factory) *DirAliases {
-	return &DirAliases{
+func NewMountMap(fsf fileserver.Factory) *MountMap {
+	return &MountMap{
 		m:   make(map[string]fileserver.Server),
 		fsf: fsf,
 	}
 }
 
 type Server struct {
-	DirAliases *DirAliases
-	Addr       string
-	Port       uint16
-	Started    chan struct{}
-	srv        *http.Server
-	ln         net.Listener
+	MountMap *MountMap
+	Addr     string
+	Port     uint16
+	Started  chan struct{}
+	srv      *http.Server
+	ln       net.Listener
 }
 
 func NewServer(addr string, fsf fileserver.Factory) *Server {
 	return &Server{
-		DirAliases: NewDirAliases(fsf),
-		Addr:       addr,
-		Started:    make(chan struct{}),
+		MountMap: NewMountMap(fsf),
+		Addr:     addr,
+		Started:  make(chan struct{}),
 	}
 }
 
@@ -146,7 +146,7 @@ func (ds *Server) ListenAndServe() error {
 	}
 	ds.Port = uint16(port)
 	ds.srv = &http.Server{
-		Handler: ds.DirAliases,
+		Handler: ds.MountMap,
 	}
 	ds.ln = &connsCloserListener{
 		Listener: tcpKeepAliveListener{ln.(*net.TCPListener)},

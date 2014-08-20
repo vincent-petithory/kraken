@@ -20,7 +20,7 @@ func (fs mockFileServer) Root() string {
 	return fs.RootFn()
 }
 
-func TestDirAliasHandler(t *testing.T) {
+func TestMountMapHandler(t *testing.T) {
 	fsf := make(fileserver.Factory)
 	if err := fsf.Register("mock", fileserver.Constructor(func(root string, params fileserver.Params) fileserver.Server {
 		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -38,19 +38,19 @@ func TestDirAliasHandler(t *testing.T) {
 	}
 
 	tests := []struct {
-		Alias   string
-		Path    string
-		ReqPath string
-		Status  int
+		Target          string
+		ReqPath         string
+		ExpectedURLPath string
+		Status          int
 	}{
-		{"/foo", "/bar", "/foo/bar", http.StatusOK},
-		{"/baz", "/", "/baz/", http.StatusOK},
+		{"/foo", "/foo/bar", "/bar", http.StatusOK},
+		{"/baz", "/baz/", "/", http.StatusOK},
 		{"/", "/home/meow/Public", "/home/meow/Public", http.StatusOK},
-		{"/bar", "/", "/meow", http.StatusNotFound},
+		{"/bar", "/meow", "/", http.StatusNotFound},
 	}
 	for _, test := range tests {
-		da := kraken.NewDirAliases(fsf)
-		_, err := da.Put(test.Alias, test.Path, "mock", nil)
+		da := kraken.NewMountMap(fsf)
+		_, err := da.Put(test.Target, "/rabbit/hole", "mock", nil)
 		if err != nil {
 			t.Error(err)
 			return
@@ -70,9 +70,9 @@ func TestDirAliasHandler(t *testing.T) {
 		if w.Code != http.StatusOK {
 			continue
 		}
-		path := w.Body.String()
-		if path != test.Path {
-			t.Errorf("expected %v, got %v", test.Path, path)
+		urlPath := w.Body.String()
+		if urlPath != test.ExpectedURLPath {
+			t.Errorf("expected %v, got %v", test.ExpectedURLPath, urlPath)
 		}
 	}
 }
