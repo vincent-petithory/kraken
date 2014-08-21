@@ -54,17 +54,35 @@ func main() {
 
 	flags := &flagSet{}
 	serverAddCmd := &cobra.Command{
-		Use:   "add [port]",
+		Use:   "add [PORT]",
 		Short: "Add a new server",
-		Long:  "Add a new server listening on [port], or a random port if not provided",
+		Long:  "Add a new server listening on PORT, or a random port if not provided",
 		Run:   clientCmd(client, flags, serverAdd),
 	}
 	serverAddCmd.Flags().StringVarP(&flags.ServerAddBind, "bind", "b", "", "Address to bind to, defaults to not bind.")
 
+	serverRmCmd := &cobra.Command{
+		Use:   "rm PORT",
+		Short: "Removes a server",
+		Long:  "Removes a server listening on PORT",
+		Run:   clientCmd(client, flags, serverRm),
+	}
+
+	serverClearCmd := &cobra.Command{
+		Use:   "clear",
+		Short: "Removes all servers",
+		Long:  "Removes all available servers",
+		Run:   clientCmd(client, flags, serverRmAll),
+	}
+
 	rootCmd := &cobra.Command{
 		Use: "krakenctl",
 	}
-	rootCmd.AddCommand(serverAddCmd)
+	rootCmd.AddCommand(
+		serverAddCmd,
+		serverRmCmd,
+		serverClearCmd,
+	)
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}
@@ -79,7 +97,6 @@ func serverAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string
 	}
 	if len(args) > 1 {
 		cmd.Usage()
-		fmt.Fprintln(os.Stderr, "too many args provided")
 		return
 	}
 	port, err := strconv.Atoi(args[0])
@@ -87,6 +104,34 @@ func serverAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string
 		log.Fatalf("error parsing port: %v", err)
 	}
 	if err := client.AddServer(flags.ServerAddBind, uint16(port)); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func serverRm(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+	if len(args) == 0 {
+		cmd.Usage()
+		return
+	}
+	if len(args) > 1 {
+		cmd.Usage()
+		return
+	}
+	port, err := strconv.Atoi(args[0])
+	if err != nil {
+		log.Fatalf("error parsing port: %v", err)
+	}
+	if err := client.RemoveServer(uint16(port)); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func serverRmAll(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+	if len(args) > 0 {
+		cmd.Usage()
+		return
+	}
+	if err := client.RemoveAllServers(); err != nil {
 		log.Fatal(err)
 	}
 }
