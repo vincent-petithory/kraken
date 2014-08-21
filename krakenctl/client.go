@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/vincent-petithory/kraken/admin"
 )
@@ -65,44 +63,57 @@ func (c *client) checkCode(resp *http.Response, code int) error {
 	return nil
 }
 
-func (c *client) AddServerWithRandomPort(bindAddr string) error {
-	data := admin.CreateServerRequest{BindAddress: bindAddr}
-	resp, err := c.doRequest("POST", admin.ServersRoute{}, data)
+func (c *client) GetServers() ([]admin.Server, error) {
+	resp, err := c.doRequest("GET", admin.ServersRoute{}, nil)
 	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if err := c.checkCode(resp, http.StatusCreated); err != nil {
-		return err
-	}
-	var srv admin.Server
-	if err := json.NewDecoder(resp.Body).Decode(&srv); err != nil {
-		return err
-	}
-	addr := net.JoinHostPort(srv.BindAddress, strconv.Itoa(int(srv.Port)))
-	fmt.Printf("server available on %s\n", addr)
-	return nil
-}
-
-func (c *client) AddServer(bindAddr string, port uint16) error {
-	data := admin.CreateServerRequest{BindAddress: bindAddr}
-	resp, err := c.doRequest("PUT", admin.ServersSelfRoute{port}, data)
-	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if err := c.checkCode(resp, http.StatusOK); err != nil {
-		return err
+		return nil, err
+	}
+	var srvs []admin.Server
+	if err := json.NewDecoder(resp.Body).Decode(&srvs); err != nil {
+		return nil, err
+	}
+	return srvs, nil
+}
+
+func (c *client) AddServerWithRandomPort(bindAddr string) (*admin.Server, error) {
+	data := admin.CreateServerRequest{BindAddress: bindAddr}
+	resp, err := c.doRequest("POST", admin.ServersRoute{}, data)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkCode(resp, http.StatusCreated); err != nil {
+		return nil, err
 	}
 	var srv admin.Server
 	if err := json.NewDecoder(resp.Body).Decode(&srv); err != nil {
-		return err
+		return nil, err
 	}
-	addr := net.JoinHostPort(srv.BindAddress, strconv.Itoa(int(srv.Port)))
-	fmt.Printf("server available on %s\n", addr)
-	return nil
+	return &srv, nil
+}
+
+func (c *client) AddServer(bindAddr string, port uint16) (*admin.Server, error) {
+	data := admin.CreateServerRequest{BindAddress: bindAddr}
+	resp, err := c.doRequest("PUT", admin.ServersSelfRoute{port}, data)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkCode(resp, http.StatusOK); err != nil {
+		return nil, err
+	}
+	var srv admin.Server
+	if err := json.NewDecoder(resp.Body).Decode(&srv); err != nil {
+		return nil, err
+	}
+	return &srv, nil
 }
 
 func (c *client) RemoveServer(port uint16) error {

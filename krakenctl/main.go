@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -56,6 +57,14 @@ func main() {
 	}
 
 	flags := &flagSet{}
+
+	serversGetCmd := &cobra.Command{
+		Use:   "ls",
+		Short: "Lists the available servers",
+		Long:  "Lists the available servers",
+		Run:   clientCmd(client, flags, serverList),
+	}
+
 	serverAddCmd := &cobra.Command{
 		Use:   "add [PORT]",
 		Short: "Add a new server",
@@ -82,6 +91,7 @@ func main() {
 		Use: "krakenctl",
 	}
 	rootCmd.AddCommand(
+		serversGetCmd,
 		serverAddCmd,
 		serverRmCmd,
 		serverClearCmd,
@@ -91,24 +101,52 @@ func main() {
 	}
 }
 
-func serverAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
-	if len(args) == 0 {
-		if err := client.AddServerWithRandomPort(flags.ServerAddBind); err != nil {
-			log.Fatal(err)
-		}
+func serverList(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+	if len(args) > 0 {
+		cmd.Usage()
 		return
 	}
+	srvs, err := client.GetServers()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, srv := range srvs {
+		addr := net.JoinHostPort(srv.BindAddress, strconv.Itoa(int(srv.Port)))
+		fmt.Print(addr)
+		if len(srv.Mounts) == 0 {
+			fmt.Println(": no mounts")
+			continue
+		}
+		for _, mount := range srv.Mounts {
+			fmt.Printf(" * %s: %s -> %s\n", mount.ID, mount.Source, mount.Target)
+		}
+	}
+}
+
+func serverAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
 	if len(args) > 1 {
 		cmd.Usage()
 		return
 	}
-	port, err := strconv.Atoi(args[0])
-	if err != nil {
-		log.Fatalf("error parsing port: %v", err)
+	var (
+		srv *admin.Server
+		err error
+	)
+	if len(args) == 0 {
+		srv, err = client.AddServerWithRandomPort(flags.ServerAddBind)
+	} else {
+		port, err := strconv.Atoi(args[0])
+		if err != nil {
+			log.Fatalf("error parsing port: %v", err)
+		}
+		srv, err = client.AddServer(flags.ServerAddBind, uint16(port))
 	}
-	if err := client.AddServer(flags.ServerAddBind, uint16(port)); err != nil {
+	if err != nil {
 		log.Fatal(err)
 	}
+	addr := net.JoinHostPort(srv.BindAddress, strconv.Itoa(int(srv.Port)))
+	fmt.Printf("server available on %s\n", addr)
 }
 
 func serverRm(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
