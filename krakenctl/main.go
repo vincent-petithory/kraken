@@ -44,6 +44,7 @@ func clientCmd(client *client, flags *flagSet, runFn func(*client, *flagSet, *co
 }
 
 func main() {
+	log.SetFlags(0)
 	krakenURL, err := loadKrakenURL()
 	if err != nil {
 		log.Fatal(err)
