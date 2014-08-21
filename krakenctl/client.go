@@ -15,13 +15,14 @@ import (
 )
 
 type client struct {
-	c   *http.Client
-	url *url.URL
+	c      *http.Client
+	url    *url.URL
+	routes *admin.ServerPoolAdminRoutes
 }
 
-func (c *client) newRequest(method string, path string, v interface{}) (*http.Request, error) {
+func (c *client) newRequest(method string, route admin.Route, v interface{}) (*http.Request, error) {
 	u := *c.url
-	u.Path = path
+	u.Path = route.URL(c.routes).Path
 	var body io.Reader
 	if v != nil {
 		b, err := json.Marshal(v)
@@ -40,8 +41,8 @@ func (c *client) newRequest(method string, path string, v interface{}) (*http.Re
 	return r, nil
 }
 
-func (c *client) doRequest(method string, path string, v interface{}) (*http.Response, error) {
-	r, err := c.newRequest(method, path, v)
+func (c *client) doRequest(method string, route admin.Route, v interface{}) (*http.Response, error) {
+	r, err := c.newRequest(method, route, v)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +67,7 @@ func (c *client) checkCode(resp *http.Response, code int) error {
 
 func (c *client) AddServerWithRandomPort(bindAddr string) error {
 	data := admin.CreateServerRequest{BindAddress: bindAddr}
-	resp, err := c.doRequest("POST", "/api/servers", data)
+	resp, err := c.doRequest("POST", admin.ServersRoute{}, data)
 	if err != nil {
 		return err
 	}
@@ -86,7 +87,7 @@ func (c *client) AddServerWithRandomPort(bindAddr string) error {
 
 func (c *client) AddServer(bindAddr string, port uint16) error {
 	data := admin.CreateServerRequest{BindAddress: bindAddr}
-	resp, err := c.doRequest("PUT", fmt.Sprintf("/api/servers/%d", port), data)
+	resp, err := c.doRequest("PUT", admin.ServersSelfRoute{port}, data)
 	if err != nil {
 		return err
 	}
@@ -105,7 +106,7 @@ func (c *client) AddServer(bindAddr string, port uint16) error {
 }
 
 func (c *client) RemoveServer(port uint16) error {
-	resp, err := c.doRequest("DELETE", fmt.Sprintf("/api/servers/%d", port), nil)
+	resp, err := c.doRequest("DELETE", admin.ServersSelfRoute{port}, nil)
 	if err != nil {
 		return err
 	}
@@ -118,7 +119,7 @@ func (c *client) RemoveServer(port uint16) error {
 }
 
 func (c *client) RemoveAllServers() error {
-	resp, err := c.doRequest("DELETE", "/api/servers", nil)
+	resp, err := c.doRequest("DELETE", admin.ServersRoute{}, nil)
 	if err != nil {
 		return err
 	}

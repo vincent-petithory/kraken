@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/spf13/cobra"
+	"github.com/vincent-petithory/kraken/admin"
 )
 
 // Environnement var for the url on which the admin service is accessible.
@@ -48,8 +49,9 @@ func main() {
 		log.Fatal(err)
 	}
 	client := &client{
-		c:   &http.Client{},
-		url: krakenURL,
+		c:      &http.Client{},
+		url:    krakenURL,
+		routes: admin.NewServerPoolAdminRoutes(),
 	}
 
 	flags := &flagSet{}
