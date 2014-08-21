@@ -297,7 +297,9 @@ func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.
 
 func (spah *serverPoolAdminHandler) removeServers(w http.ResponseWriter, r *http.Request) {
 	var errs []error
-	for _, srv := range spah.ServerPool.Srvs {
+	srvs := make([]*kraken.Server, len(spah.ServerPool.Srvs))
+	copy(srvs, spah.ServerPool.Srvs)
+	for _, srv := range srvs {
 		if ok, err := spah.ServerPool.Remove(srv.Port); err != nil {
 			errs = append(errs, err)
 		} else if !ok {
