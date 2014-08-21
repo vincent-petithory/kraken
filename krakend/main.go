@@ -2,9 +2,11 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/vincent-petithory/kraken"
@@ -14,12 +16,16 @@ import (
 
 var adminAddr string
 
-// Environnement var for the addr of the admin service.
-// It takes precedence on the -http flag.
-const envKrakendAddr = "KRAKEND_ADDR"
+const (
+	// Environnement var for the addr of the admin service.
+	// It takes precedence on the -http flag.
+	envKrakenAddr = "KRAKEN_ADDR"
+	// Environnement var for the base URL of the admin service.
+	envKrakenURL = "KRAKEN_URL"
+)
 
 func init() {
-	flag.StringVar(&adminAddr, "http", ":4214", "The address on which the admin http api will listen on. Defaults to :4214")
+	flag.StringVar(&adminAddr, "http", "localhost:4214", "The address on which the admin http api will listen on. Defaults to :4214")
 	flag.Parse()
 }
 
@@ -34,7 +40,7 @@ func main() {
 	// Start administration server
 	spah := admin.NewServerPoolAdminHandler(serverPool)
 
-	if envAdminAddr := os.Getenv(envKrakendAddr); envAdminAddr != "" {
+	if envAdminAddr := os.Getenv(envKrakenAddr); envAdminAddr != "" {
 		adminAddr = envAdminAddr
 	}
 	ln, err := net.Listen("tcp", adminAddr)
@@ -44,6 +50,21 @@ func main() {
 	srv := &http.Server{
 		Handler: spah,
 	}
+
+	var (
+		adminURL *url.URL
+		urlErr   error
+	)
+	adminURL, urlErr = url.Parse(fmt.Sprintf("http://%s", ln.Addr()))
+	if envAdminURL := os.Getenv(envKrakenURL); envAdminURL != "" {
+		adminURL, urlErr = url.Parse(envAdminURL)
+	}
+	if urlErr != nil {
+		log.Fatal(urlErr)
+	}
+	spah.SetBaseURL(adminURL)
+
 	log.Printf("[admin] Listening on %s", ln.Addr())
+	log.Printf("[admin] Available on %s", spah.BaseURL())
 	log.Fatal(srv.Serve(ln))
 }

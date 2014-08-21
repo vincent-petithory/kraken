@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/vincent-petithory/kraken"
@@ -19,7 +20,7 @@ import (
 type serverPoolAdminHandler struct {
 	*kraken.ServerPool
 	h      http.Handler
-	router *mux.Router
+	routes *ServerPoolAdminRoutes
 }
 
 const (
@@ -29,6 +30,38 @@ const (
 	routeServersSelfMountsSelf = "servers.self.mounts.self"
 	routeFileservers           = "fileservers"
 )
+
+type Route interface {
+	URL(*ServerPoolAdminRoutes) *url.URL
+}
+
+type (
+	ServersRoute     struct{}
+	ServersSelfRoute struct {
+		Port uint16
+	}
+	ServersSelfMountsRoute struct {
+		Port uint16
+	}
+	ServersSelfMountsSelfRoute struct {
+		Port uint16
+		ID   string
+	}
+)
+
+func (r ServersRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
+	return spar.url(routeServers)
+}
+
+func (r ServersSelfRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
+	return spar.url(routeServersSelf, "port", strconv.Itoa(int(r.Port)))
+}
+func (r ServersSelfMountsRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
+	return spar.url(routeServersSelfMounts, "port", strconv.Itoa(int(r.Port)))
+}
+func (r ServersSelfMountsSelfRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
+	return spar.url(routeServersSelfMountsSelf, "port", strconv.Itoa(int(r.Port)), "mount", r.ID)
+}
 
 type AdminAPIErrorType string
 
@@ -50,46 +83,83 @@ func (e *AdminAPIError) Error() string {
 	return e.Msg
 }
 
-func NewServerPoolAdminHandler(serverPool *kraken.ServerPool) *serverPoolAdminHandler {
-	spah := serverPoolAdminHandler{ServerPool: serverPool}
+type ServerPoolAdminRoutes struct {
+	r       *mux.Router
+	BaseURL *url.URL
+}
+
+func (spar *ServerPoolAdminRoutes) url(name string, params ...string) *url.URL {
+	var urlPath string
+	if u, err := spar.r.Get(name).URLPath(params...); err != nil {
+		log.Print(err)
+		urlPath = ""
+	} else {
+		urlPath = u.Path
+	}
+	var u url.URL
+	if spar.BaseURL != nil {
+		u = (*spar.BaseURL)
+	}
+	u.Path = urlPath
+	return &u
+}
+
+func (spar *ServerPoolAdminRoutes) RouteURL(r Route) *url.URL {
+	return r.URL(spar)
+}
+
+func NewServerPoolAdminRoutes() *ServerPoolAdminRoutes {
 	r := mux.NewRouter()
 	apiRouter := r.PathPrefix("/api/").Subrouter()
-	apiRouter.Handle("/servers", handlers.MethodHandler{
+	apiRouter.Path("/servers").Name(routeServers)
+	apiRouter.Path("/servers/{port:[0-9]{1,5}}").Name(routeServersSelf)
+	apiRouter.Path("/servers/{port:[0-9]{1,5}}/mounts").Name(routeServersSelfMounts)
+	apiRouter.Path("/servers/{port:[0-9]{1,5}}/mounts/{mount}").Name(routeServersSelfMountsSelf)
+	apiRouter.Path("/fileservers").Name(routeFileservers)
+	return &ServerPoolAdminRoutes{r: r}
+}
+
+func NewServerPoolAdminHandler(serverPool *kraken.ServerPool) *serverPoolAdminHandler {
+	spah := serverPoolAdminHandler{
+		ServerPool: serverPool,
+		routes:     NewServerPoolAdminRoutes(),
+	}
+	spah.routes.r.Get(routeServers).Handler(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(spah.getServers),
 		"POST":   http.HandlerFunc(spah.createServerWithRandomPort),
 		"DELETE": http.HandlerFunc(spah.removeServers),
-	}).Name(routeServers)
-	apiRouter.Handle("/servers/{port:[0-9]{1,5}}", handlers.MethodHandler{
+	})
+	spah.routes.r.Get(routeServersSelf).Handler(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(spah.getServer),
 		"PUT":    http.HandlerFunc(spah.createServer),
 		"DELETE": http.HandlerFunc(spah.removeServer),
-	}).Name(routeServersSelf)
-	apiRouter.Handle("/servers/{port:[0-9]{1,5}}/mounts", handlers.MethodHandler{
+	})
+	spah.routes.r.Get(routeServersSelfMounts).Handler(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(spah.getServerMounts),
 		"POST":   http.HandlerFunc(spah.createServerMount),
 		"DELETE": http.HandlerFunc(spah.removeServerMounts),
-	}).Name(routeServersSelfMounts)
-	apiRouter.Handle("/servers/{port:[0-9]{1,5}}/mounts/{mount}", handlers.MethodHandler{
+	})
+	spah.routes.r.Get(routeServersSelfMountsSelf).Handler(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(spah.getServerMount),
 		"DELETE": http.HandlerFunc(spah.removeServerMount),
-	}).Name(routeServersSelfMountsSelf)
-	apiRouter.Handle("/fileservers", handlers.MethodHandler{
+	})
+	spah.routes.r.Get(routeFileservers).Handler(handlers.MethodHandler{
 		"GET": http.HandlerFunc(spah.getFileServers),
-	}).Name(routeFileservers)
-	spah.h = r
-	spah.router = r
+	})
+	spah.h = spah.routes.r
 	return &spah
 }
 
-func (spah *serverPoolAdminHandler) writeLocation(w http.ResponseWriter, name string, params ...string) {
-	var urlStr string
-	if u, err := spah.router.GetRoute(name).URL(params...); err != nil {
-		log.Print(err)
-		urlStr = ""
-	} else {
-		urlStr = u.String()
-	}
-	w.Header().Set("Location", urlStr)
+func (spah *serverPoolAdminHandler) SetBaseURL(u *url.URL) {
+	spah.routes.BaseURL = u
+}
+
+func (spah *serverPoolAdminHandler) BaseURL() *url.URL {
+	return &(*(spah.routes.BaseURL))
+}
+
+func (spah *serverPoolAdminHandler) writeLocation(w http.ResponseWriter, route Route) {
+	w.Header().Set("Location", spah.routes.RouteURL(route).String())
 }
 
 func (spah *serverPoolAdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -190,7 +260,7 @@ func (spah *serverPoolAdminHandler) createServerWithRandomPort(w http.ResponseWr
 	}
 	// Wait for the server to be started
 	<-srv.Started
-	spah.writeLocation(w, routeServersSelf, "port", strconv.Itoa(int(srv.Port)))
+	spah.writeLocation(w, ServersSelfRoute{srv.Port})
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
 		log.Print(err)
@@ -355,7 +425,7 @@ func (spah *serverPoolAdminHandler) createServerMount(w http.ResponseWriter, r *
 		Source: srv.MountMap.GetSource(req.Target),
 		Target: req.Target,
 	}
-	spah.writeLocation(w, routeServersSelfMountsSelf, "mount", mount.ID)
+	spah.writeLocation(w, ServersSelfMountsSelfRoute{Port: srv.Port, ID: mount.ID})
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(mount); err != nil {
 		log.Print(err)
