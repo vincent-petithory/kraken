@@ -6,6 +6,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,8 +44,20 @@ func (mm *MountMap) GetSource(mountTarget string) string {
 	return fs.Root()
 }
 
-// ErrInvalidMountTarget describes an invalid value for a mount target.
-var ErrInvalidMountTarget = errors.New("invalid mount target value")
+var (
+	// ErrInvalidMountTarget describes an invalid value for a mount target.
+	ErrInvalidMountTarget = errors.New("invalid mount target value")
+	// ErrInvalidMountSource describes an invalid value for a mount source.
+	ErrInvalidMountSource = errors.New("invalid mount source value")
+)
+
+type MountSourcePermError struct {
+	err error
+}
+
+func (e *MountSourcePermError) Error() string {
+	return e.err.Error()
+}
 
 // Put registers a mount target for the given mount source.
 // It returns true if the mount target already exists.
@@ -59,6 +73,19 @@ func (mm *MountMap) Put(mountTarget string, mountSource string, fsType string, f
 	if mountTarget != "/" && strings.HasSuffix(mountTarget, "/") {
 		return false, ErrInvalidMountTarget
 	}
+
+	if !path.IsAbs(mountSource) {
+		return false, ErrInvalidMountSource
+	}
+
+	fi, err := os.Stat(mountSource)
+	if err != nil {
+		return false, &MountSourcePermError{err}
+	}
+	if !fi.IsDir() {
+		return false, &MountSourcePermError{fmt.Errorf("%s: not a directory", mountSource)}
+	}
+
 	_, ok := mm.m[mountTarget]
 
 	fs := mm.fsf.New(mountSource, fsType, fsParams)

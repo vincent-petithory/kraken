@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/vincent-petithory/kraken"
@@ -48,9 +49,13 @@ func TestMountMapHandler(t *testing.T) {
 		{"/", "/home/meow/Public", "/home/meow/Public", http.StatusOK},
 		{"/bar", "/meow", "/", http.StatusNotFound},
 	}
+	mountSource, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, test := range tests {
 		da := kraken.NewMountMap(fsf)
-		_, err := da.Put(test.Target, "/rabbit/hole", "mock", nil)
+		_, err := da.Put(test.Target, mountSource, "mock", nil)
 		if err != nil {
 			t.Error(err)
 			return
