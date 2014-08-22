@@ -17,7 +17,7 @@ Here's a sample session, using the `krakenctl` client.
 It creates a http server and makes it serve $HOME/Pictures on http://localhost:4567/pics.
 
 ~~~ shell
-$ # Create a http server listening on port 60906, and bind it to localhost.
+$ # Create a http server listening on port 4567, and bind it to localhost.
 $ krakenctl add --bind=localhost 4567
 server available on 127.0.0.1:4567
 $ # Make it serve $HOME/Pictures mounted on /pics
