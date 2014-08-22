@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"bytes"
@@ -12,13 +12,23 @@ import (
 	"github.com/vincent-petithory/kraken/admin"
 )
 
-type client struct {
-	c      *http.Client
+// Client defines methods to access the Kraken RESTful API.
+type Client struct {
+	C      http.Client // HTTP Client
 	url    *url.URL
 	routes *admin.ServerPoolRoutes
 }
 
-func (c *client) newRequest(method string, route admin.Route, v interface{}) (*http.Request, error) {
+// New returns a Client which will hit the API at apiURL.
+func New(apiURL *url.URL) *Client {
+	return &Client{
+		C:      http.Client{},
+		url:    apiURL,
+		routes: admin.NewServerPoolRoutes(),
+	}
+}
+
+func (c *Client) newRequest(method string, route admin.Route, v interface{}) (*http.Request, error) {
 	u := *c.url
 	u.Path = route.URL(c.routes).Path
 	var body io.Reader
@@ -39,19 +49,19 @@ func (c *client) newRequest(method string, route admin.Route, v interface{}) (*h
 	return r, nil
 }
 
-func (c *client) doRequest(method string, route admin.Route, v interface{}) (*http.Response, error) {
+func (c *Client) doRequest(method string, route admin.Route, v interface{}) (*http.Response, error) {
 	r, err := c.newRequest(method, route, v)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.c.Do(r)
+	resp, err := c.C.Do(r)
 	if err != nil {
 		return nil, err
 	}
 	return resp, err
 }
 
-func (c *client) checkCode(resp *http.Response, code int) error {
+func (c *Client) checkCode(resp *http.Response, code int) error {
 	// TODO unmarshal api error type when jsonify4xx-5xx middleware is done.
 	if resp.StatusCode != code {
 		b, err := ioutil.ReadAll(resp.Body)
@@ -63,7 +73,7 @@ func (c *client) checkCode(resp *http.Response, code int) error {
 	return nil
 }
 
-func (c *client) doRequestAndDecodeResponse(method string, route admin.Route, reqData interface{}, code int, respData interface{}) error {
+func (c *Client) doRequestAndDecodeResponse(method string, route admin.Route, reqData interface{}, code int, respData interface{}) error {
 	resp, err := c.doRequest(method, route, reqData)
 	if err != nil {
 		return err
@@ -82,7 +92,7 @@ func (c *client) doRequestAndDecodeResponse(method string, route admin.Route, re
 	return nil
 }
 
-func (c *client) GetServers() ([]admin.Server, error) {
+func (c *Client) GetServers() ([]admin.Server, error) {
 	var srvs []admin.Server
 	if err := c.doRequestAndDecodeResponse(
 		"GET",
@@ -96,7 +106,7 @@ func (c *client) GetServers() ([]admin.Server, error) {
 	return srvs, nil
 }
 
-func (c *client) GetServer(port uint16) (*admin.Server, error) {
+func (c *Client) GetServer(port uint16) (*admin.Server, error) {
 	var srv admin.Server
 	if err := c.doRequestAndDecodeResponse(
 		"GET",
@@ -110,7 +120,7 @@ func (c *client) GetServer(port uint16) (*admin.Server, error) {
 	return &srv, nil
 }
 
-func (c *client) AddServerWithRandomPort(data admin.CreateServerRequest) (*admin.Server, error) {
+func (c *Client) AddServerWithRandomPort(data admin.CreateServerRequest) (*admin.Server, error) {
 	var srv admin.Server
 	if err := c.doRequestAndDecodeResponse(
 		"POST",
@@ -124,7 +134,7 @@ func (c *client) AddServerWithRandomPort(data admin.CreateServerRequest) (*admin
 	return &srv, nil
 }
 
-func (c *client) AddServer(port uint16, data admin.CreateServerRequest) (*admin.Server, error) {
+func (c *Client) AddServer(port uint16, data admin.CreateServerRequest) (*admin.Server, error) {
 	var srv admin.Server
 	if err := c.doRequestAndDecodeResponse(
 		"PUT",
@@ -138,7 +148,7 @@ func (c *client) AddServer(port uint16, data admin.CreateServerRequest) (*admin.
 	return &srv, nil
 }
 
-func (c *client) RemoveServer(port uint16) error {
+func (c *Client) RemoveServer(port uint16) error {
 	if err := c.doRequestAndDecodeResponse(
 		"DELETE",
 		admin.ServersSelfRoute{port},
@@ -151,7 +161,7 @@ func (c *client) RemoveServer(port uint16) error {
 	return nil
 }
 
-func (c *client) RemoveAllServers() error {
+func (c *Client) RemoveAllServers() error {
 	if err := c.doRequestAndDecodeResponse(
 		"DELETE",
 		admin.ServersRoute{},
@@ -164,7 +174,7 @@ func (c *client) RemoveAllServers() error {
 	return nil
 }
 
-func (c *client) GetFileServers() (admin.FileServerTypes, error) {
+func (c *Client) GetFileServers() (admin.FileServerTypes, error) {
 	var fsrvs admin.FileServerTypes
 	if err := c.doRequestAndDecodeResponse(
 		"GET",
@@ -178,7 +188,7 @@ func (c *client) GetFileServers() (admin.FileServerTypes, error) {
 	return fsrvs, nil
 }
 
-func (c *client) GetMounts(port uint16) ([]admin.Mount, error) {
+func (c *Client) GetMounts(port uint16) ([]admin.Mount, error) {
 	var mounts []admin.Mount
 	if err := c.doRequestAndDecodeResponse(
 		"GET",
@@ -192,7 +202,7 @@ func (c *client) GetMounts(port uint16) ([]admin.Mount, error) {
 	return mounts, nil
 }
 
-func (c *client) GetMount(port uint16, mountID string) (*admin.Mount, error) {
+func (c *Client) GetMount(port uint16, mountID string) (*admin.Mount, error) {
 	var mount admin.Mount
 	if err := c.doRequestAndDecodeResponse(
 		"GET",
@@ -206,7 +216,7 @@ func (c *client) GetMount(port uint16, mountID string) (*admin.Mount, error) {
 	return &mount, nil
 }
 
-func (c *client) AddMount(port uint16, data admin.CreateServerMountRequest) (*admin.Mount, error) {
+func (c *Client) AddMount(port uint16, data admin.CreateServerMountRequest) (*admin.Mount, error) {
 	var mount admin.Mount
 	if err := c.doRequestAndDecodeResponse(
 		"POST",
@@ -220,7 +230,7 @@ func (c *client) AddMount(port uint16, data admin.CreateServerMountRequest) (*ad
 	return &mount, nil
 }
 
-func (c *client) RemoveAllMounts(port uint16) error {
+func (c *Client) RemoveAllMounts(port uint16) error {
 	if err := c.doRequestAndDecodeResponse(
 		"DELETE",
 		admin.ServersSelfMountsRoute{port},
@@ -233,7 +243,7 @@ func (c *client) RemoveAllMounts(port uint16) error {
 	return nil
 }
 
-func (c *client) RemoveMount(port uint16, mountID string) error {
+func (c *Client) RemoveMount(port uint16, mountID string) error {
 	if err := c.doRequestAndDecodeResponse(
 		"DELETE",
 		admin.ServersSelfMountsSelfRoute{port, mountID},

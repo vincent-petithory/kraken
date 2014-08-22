@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/vincent-petithory/kraken/admin"
+	"github.com/vincent-petithory/kraken/admin/client"
 	"github.com/vincent-petithory/kraken/fileserver"
 )
 
@@ -45,7 +45,7 @@ type flagSet struct {
 	FileServerParams string
 }
 
-func clientCmd(client *client, flags *flagSet, runFn func(*client, *flagSet, *cobra.Command, []string)) func(*cobra.Command, []string) {
+func clientCmd(client *client.Client, flags *flagSet, runFn func(*client.Client, *flagSet, *cobra.Command, []string)) func(*cobra.Command, []string) {
 	return func(cmd *cobra.Command, args []string) {
 		runFn(client, flags, cmd, args)
 	}
@@ -57,11 +57,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	client := &client{
-		c:      &http.Client{},
-		url:    krakenURL,
-		routes: admin.NewServerPoolRoutes(),
-	}
+	c := client.New(krakenURL)
 
 	flags := &flagSet{}
 
@@ -69,14 +65,14 @@ func main() {
 		Use:   "ls",
 		Short: "List the available servers",
 		Long:  "List the available servers",
-		Run:   clientCmd(client, flags, serverList),
+		Run:   clientCmd(c, flags, serverList),
 	}
 
 	serverAddCmd := &cobra.Command{
 		Use:   "add [PORT]",
 		Short: "Add a new server",
 		Long:  "Add a new server listening on PORT, or a random port if not provided",
-		Run:   clientCmd(client, flags, serverAdd),
+		Run:   clientCmd(c, flags, serverAdd),
 	}
 	serverAddCmd.Flags().StringVarP(&flags.ServerAddBind, "bind", "b", "", "Address to bind to, defaults to not bind")
 
@@ -84,21 +80,21 @@ func main() {
 		Use:   "rm PORT",
 		Short: "Remove a server",
 		Long:  "Remove a server listening on PORT",
-		Run:   clientCmd(client, flags, serverRm),
+		Run:   clientCmd(c, flags, serverRm),
 	}
 
 	serverClearCmd := &cobra.Command{
 		Use:   "clear",
 		Short: "Remove all servers",
 		Long:  "Remove all available servers",
-		Run:   clientCmd(client, flags, serverRmAll),
+		Run:   clientCmd(c, flags, serverRmAll),
 	}
 
 	mountsGetCmd := &cobra.Command{
 		Use:   "lsmount PORT",
 		Short: "List the mounts of a server",
 		Long:  "List the mounts of a the server listening on PORT",
-		Run:   clientCmd(client, flags, mountList),
+		Run:   clientCmd(c, flags, mountList),
 	}
 
 	mountAddCmd := &cobra.Command{
@@ -106,7 +102,7 @@ func main() {
 		Short: "Mount a directory on a server",
 		Long: `Mount the SOURCE directory on the server listening on PORT.
 By default, SOURCE is mounted on /$(basename SOURCE)`,
-		Run: clientCmd(client, flags, mountAdd),
+		Run: clientCmd(c, flags, mountAdd),
 	}
 	mountAddCmd.Flags().StringVarP(&flags.MountTarget, "target", "t", "", "Alternate mount target; it must start with / and not end with /")
 	mountAddCmd.Flags().StringVarP(&flags.FileServerType, "fs", "f", "default", "File server type to use for this mount point")
@@ -116,14 +112,14 @@ By default, SOURCE is mounted on /$(basename SOURCE)`,
 		Use:   "umount PORT MOUNT_ID",
 		Short: "Unmount a directory on a server",
 		Long:  "Removes the mount point MOUNT_ID, on the server listening on PORT",
-		Run:   clientCmd(client, flags, mountRm),
+		Run:   clientCmd(c, flags, mountRm),
 	}
 
 	fileServersGetCmd := &cobra.Command{
 		Use:   "fileservers",
 		Short: "Lists the available file servers",
 		Long:  "Lists the available file servers",
-		Run:   clientCmd(client, flags, fileServerList),
+		Run:   clientCmd(c, flags, fileServerList),
 	}
 
 	rootCmd := &cobra.Command{
@@ -147,7 +143,7 @@ By default, SOURCE is mounted on /$(basename SOURCE)`,
 	}
 }
 
-func serverList(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+func serverList(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
 	if len(args) > 0 {
 		cmd.Usage()
 		return
@@ -172,7 +168,7 @@ func serverList(client *client, flags *flagSet, cmd *cobra.Command, args []strin
 	}
 }
 
-func serverAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+func serverAdd(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
 	if len(args) > 1 {
 		cmd.Usage()
 		return
@@ -198,7 +194,7 @@ func serverAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string
 	fmt.Printf("server available on %s\n", addr)
 }
 
-func serverRm(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+func serverRm(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
 	if len(args) == 0 || len(args) > 1 {
 		cmd.Usage()
 		return
@@ -212,7 +208,7 @@ func serverRm(client *client, flags *flagSet, cmd *cobra.Command, args []string)
 	}
 }
 
-func serverRmAll(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+func serverRmAll(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
 	if len(args) > 0 {
 		cmd.Usage()
 		return
@@ -222,7 +218,7 @@ func serverRmAll(client *client, flags *flagSet, cmd *cobra.Command, args []stri
 	}
 }
 
-func fileServerList(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+func fileServerList(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
 	if len(args) > 0 {
 		cmd.Usage()
 		return
@@ -235,7 +231,7 @@ func fileServerList(client *client, flags *flagSet, cmd *cobra.Command, args []s
 	fmt.Println(strings.Join(fsrvs, ", "))
 }
 
-func mountList(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+func mountList(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
 	if len(args) == 0 || len(args) > 1 {
 		cmd.Usage()
 		return
@@ -254,7 +250,7 @@ func mountList(client *client, flags *flagSet, cmd *cobra.Command, args []string
 	}
 }
 
-func mountAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+func mountAdd(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
 	if len(args) == 0 || len(args) > 2 {
 		cmd.Usage()
 		return
@@ -289,7 +285,7 @@ func mountAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string)
 	fmt.Printf("%s: %s -> %s\n", mount.ID, mount.Source, mount.Target)
 }
 
-func mountRm(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+func mountRm(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
 	if len(args) == 0 || len(args) > 2 {
 		cmd.Usage()
 		return
