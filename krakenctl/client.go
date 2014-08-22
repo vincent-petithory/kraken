@@ -63,80 +63,88 @@ func (c *client) checkCode(resp *http.Response, code int) error {
 	return nil
 }
 
-func (c *client) GetServers() ([]admin.Server, error) {
-	resp, err := c.doRequest("GET", admin.ServersRoute{}, nil)
+func (c *client) doRequestAndDecodeResponse(method string, route admin.Route, reqData interface{}, code int, respData interface{}) error {
+	resp, err := c.doRequest(method, route, reqData)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 
-	if err := c.checkCode(resp, http.StatusOK); err != nil {
-		return nil, err
+	if err := c.checkCode(resp, code); err != nil {
+		return err
 	}
+	if respData == nil {
+		return nil
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *client) GetServers() ([]admin.Server, error) {
 	var srvs []admin.Server
-	if err := json.NewDecoder(resp.Body).Decode(&srvs); err != nil {
+	if err := c.doRequestAndDecodeResponse(
+		"GET",
+		admin.ServersRoute{},
+		nil,
+		http.StatusOK,
+		&srvs,
+	); err != nil {
 		return nil, err
 	}
 	return srvs, nil
 }
 
 func (c *client) AddServerWithRandomPort(bindAddr string) (*admin.Server, error) {
-	data := admin.CreateServerRequest{BindAddress: bindAddr}
-	resp, err := c.doRequest("POST", admin.ServersRoute{}, data)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if err := c.checkCode(resp, http.StatusCreated); err != nil {
-		return nil, err
-	}
 	var srv admin.Server
-	if err := json.NewDecoder(resp.Body).Decode(&srv); err != nil {
+	if err := c.doRequestAndDecodeResponse(
+		"POST",
+		admin.ServersRoute{},
+		admin.CreateServerRequest{BindAddress: bindAddr},
+		http.StatusCreated,
+		&srv,
+	); err != nil {
 		return nil, err
 	}
 	return &srv, nil
 }
 
 func (c *client) AddServer(bindAddr string, port uint16) (*admin.Server, error) {
-	data := admin.CreateServerRequest{BindAddress: bindAddr}
-	resp, err := c.doRequest("PUT", admin.ServersSelfRoute{port}, data)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if err := c.checkCode(resp, http.StatusOK); err != nil {
-		return nil, err
-	}
 	var srv admin.Server
-	if err := json.NewDecoder(resp.Body).Decode(&srv); err != nil {
+	if err := c.doRequestAndDecodeResponse(
+		"PUT",
+		admin.ServersSelfRoute{port},
+		admin.CreateServerRequest{BindAddress: bindAddr},
+		http.StatusOK,
+		&srv,
+	); err != nil {
 		return nil, err
 	}
 	return &srv, nil
 }
 
 func (c *client) RemoveServer(port uint16) error {
-	resp, err := c.doRequest("DELETE", admin.ServersSelfRoute{port}, nil)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if err := c.checkCode(resp, http.StatusOK); err != nil {
+	if err := c.doRequestAndDecodeResponse(
+		"DELETE",
+		admin.ServersSelfRoute{port},
+		nil,
+		http.StatusOK,
+		nil,
+	); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (c *client) RemoveAllServers() error {
-	resp, err := c.doRequest("DELETE", admin.ServersRoute{}, nil)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if err := c.checkCode(resp, http.StatusOK); err != nil {
+	if err := c.doRequestAndDecodeResponse(
+		"DELETE",
+		admin.ServersRoute{},
+		nil,
+		http.StatusOK,
+		nil,
+	); err != nil {
 		return err
 	}
 	return nil
