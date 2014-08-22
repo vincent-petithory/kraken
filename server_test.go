@@ -23,7 +23,7 @@ func (fs mockFileServer) Root() string {
 
 func TestMountMapHandler(t *testing.T) {
 	fsf := make(fileserver.Factory)
-	if err := fsf.Register("mock", fileserver.Constructor(func(root string, params fileserver.Params) fileserver.Server {
+	if err := fsf.Register("mock", func(root string, params fileserver.Params) fileserver.Server {
 		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			io.WriteString(w, r.URL.Path)
@@ -34,7 +34,7 @@ func TestMountMapHandler(t *testing.T) {
 				return root
 			},
 		}
-	})); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -45,17 +45,19 @@ func TestMountMapHandler(t *testing.T) {
 		Status          int
 	}{
 		{"/foo", "/foo/bar", "/bar", http.StatusOK},
+		{"/foo", "/foo", "", http.StatusMovedPermanently},
 		{"/baz", "/baz/", "/", http.StatusOK},
 		{"/", "/home/meow/Public", "/home/meow/Public", http.StatusOK},
 		{"/bar", "/meow", "/", http.StatusNotFound},
+		{"/target/with/depth", "/target/with/depth/meow", "/meow", http.StatusOK},
 	}
 	mountSource, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range tests {
-		da := kraken.NewMountMap(fsf)
-		_, err := da.Put(test.Target, mountSource, "mock", nil)
+		mountMap := kraken.NewMountMap(fsf)
+		_, err := mountMap.Put(test.Target, mountSource, "mock", nil)
 		if err != nil {
 			t.Error(err)
 			return
@@ -66,7 +68,7 @@ func TestMountMapHandler(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		da.ServeHTTP(w, r)
+		mountMap.ServeHTTP(w, r)
 
 		if w.Code != test.Status {
 			t.Errorf("expected http status %d, got %d", test.Status, w.Code)

@@ -123,6 +123,10 @@ func (mm *MountMap) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if mountTarget != "/" {
 		r.URL.Path = r.URL.Path[maxMountTargetLen:]
+		if r.URL.Path == "" {
+			http.Redirect(w, r, mountTarget+"/", http.StatusMovedPermanently)
+			return
+		}
 	}
 	fs, ok := mm.m[mountTarget]
 	mm.mu.RUnlock()
