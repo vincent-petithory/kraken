@@ -28,7 +28,7 @@ const (
 	routeServersSelf           = "servers.self"
 	routeServersSelfMounts     = "servers.self.mounts"
 	routeServersSelfMountsSelf = "servers.self.mounts.self"
-	routeFileservers           = "fileservers"
+	routeFileServers           = "file-servers"
 )
 
 type Route interface {
@@ -47,12 +47,12 @@ type (
 		Port uint16
 		ID   string
 	}
+	FileServersRoute struct{}
 )
 
 func (r ServersRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
 	return spar.url(routeServers)
 }
-
 func (r ServersSelfRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
 	return spar.url(routeServersSelf, "port", strconv.Itoa(int(r.Port)))
 }
@@ -61,6 +61,9 @@ func (r ServersSelfMountsRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
 }
 func (r ServersSelfMountsSelfRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
 	return spar.url(routeServersSelfMountsSelf, "port", strconv.Itoa(int(r.Port)), "mount", r.ID)
+}
+func (r FileServersRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
+	return spar.url(routeFileServers)
 }
 
 type AdminAPIErrorType string
@@ -115,7 +118,7 @@ func NewServerPoolAdminRoutes() *ServerPoolAdminRoutes {
 	apiRouter.Path("/servers/{port:[0-9]{1,5}}").Name(routeServersSelf)
 	apiRouter.Path("/servers/{port:[0-9]{1,5}}/mounts").Name(routeServersSelfMounts)
 	apiRouter.Path("/servers/{port:[0-9]{1,5}}/mounts/{mount}").Name(routeServersSelfMountsSelf)
-	apiRouter.Path("/fileservers").Name(routeFileservers)
+	apiRouter.Path("/fileservers").Name(routeFileServers)
 	return &ServerPoolAdminRoutes{r: r}
 }
 
@@ -143,7 +146,7 @@ func NewServerPoolAdminHandler(serverPool *kraken.ServerPool) *serverPoolAdminHa
 		"GET":    http.HandlerFunc(spah.getServerMount),
 		"DELETE": http.HandlerFunc(spah.removeServerMount),
 	})
-	spah.routes.r.Get(routeFileservers).Handler(handlers.MethodHandler{
+	spah.routes.r.Get(routeFileServers).Handler(handlers.MethodHandler{
 		"GET": http.HandlerFunc(spah.getFileServers),
 	})
 	spah.h = spah.routes.r

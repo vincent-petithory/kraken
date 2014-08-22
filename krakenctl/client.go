@@ -96,12 +96,26 @@ func (c *client) GetServers() ([]admin.Server, error) {
 	return srvs, nil
 }
 
-func (c *client) AddServerWithRandomPort(bindAddr string) (*admin.Server, error) {
+func (c *client) GetServer(port uint16) (*admin.Server, error) {
+	var srv admin.Server
+	if err := c.doRequestAndDecodeResponse(
+		"GET",
+		admin.ServersSelfRoute{port},
+		nil,
+		http.StatusOK,
+		&srv,
+	); err != nil {
+		return nil, err
+	}
+	return &srv, nil
+}
+
+func (c *client) AddServerWithRandomPort(data admin.CreateServerRequest) (*admin.Server, error) {
 	var srv admin.Server
 	if err := c.doRequestAndDecodeResponse(
 		"POST",
 		admin.ServersRoute{},
-		admin.CreateServerRequest{BindAddress: bindAddr},
+		data,
 		http.StatusCreated,
 		&srv,
 	); err != nil {
@@ -110,12 +124,12 @@ func (c *client) AddServerWithRandomPort(bindAddr string) (*admin.Server, error)
 	return &srv, nil
 }
 
-func (c *client) AddServer(bindAddr string, port uint16) (*admin.Server, error) {
+func (c *client) AddServer(port uint16, data admin.CreateServerRequest) (*admin.Server, error) {
 	var srv admin.Server
 	if err := c.doRequestAndDecodeResponse(
 		"PUT",
 		admin.ServersSelfRoute{port},
-		admin.CreateServerRequest{BindAddress: bindAddr},
+		data,
 		http.StatusOK,
 		&srv,
 	); err != nil {
@@ -148,4 +162,87 @@ func (c *client) RemoveAllServers() error {
 		return err
 	}
 	return nil
+}
+
+func (c *client) GetFileServers() (admin.FileServerTypes, error) {
+	var fsrvs admin.FileServerTypes
+	if err := c.doRequestAndDecodeResponse(
+		"GET",
+		admin.FileServersRoute{},
+		nil,
+		http.StatusOK,
+		&fsrvs,
+	); err != nil {
+		return nil, err
+	}
+	return fsrvs, nil
+}
+
+func (c *client) GetMounts(port uint16) ([]admin.Mount, error) {
+	var mounts []admin.Mount
+	if err := c.doRequestAndDecodeResponse(
+		"GET",
+		admin.ServersSelfMountsRoute{port},
+		nil,
+		http.StatusOK,
+		&mounts,
+	); err != nil {
+		return nil, err
+	}
+	return mounts, nil
+}
+
+func (c *client) GetMount(port uint16, mountID string) (*admin.Mount, error) {
+	var mount admin.Mount
+	if err := c.doRequestAndDecodeResponse(
+		"GET",
+		admin.ServersSelfMountsSelfRoute{port, mountID},
+		nil,
+		http.StatusOK,
+		&mount,
+	); err != nil {
+		return nil, err
+	}
+	return &mount, nil
+}
+
+func (c *client) AddMount(port uint16, data admin.CreateServerMountRequest) (*admin.Mount, error) {
+	var mount admin.Mount
+	if err := c.doRequestAndDecodeResponse(
+		"POST",
+		admin.ServersSelfMountsRoute{port},
+		data,
+		http.StatusCreated,
+		&mount,
+	); err != nil {
+		return nil, err
+	}
+	return &mount, nil
+}
+
+func (c *client) RemoveAllMounts(port uint16) error {
+	if err := c.doRequestAndDecodeResponse(
+		"DELETE",
+		admin.ServersSelfMountsRoute{port},
+		nil,
+		http.StatusOK,
+		nil,
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *client) RemoveMount(port uint16, mountID string) error {
+	if err := c.doRequestAndDecodeResponse(
+		"DELETE",
+		admin.ServersSelfMountsSelfRoute{port, mountID},
+		nil,
+		http.StatusOK,
+		nil,
+	); err != nil {
+		return err
+	}
+	return nil
+
 }

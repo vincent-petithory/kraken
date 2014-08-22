@@ -1,16 +1,20 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/vincent-petithory/kraken/admin"
+	"github.com/vincent-petithory/kraken/fileserver"
 )
 
 // Environnement var for the url on which the admin service is accessible.
@@ -35,7 +39,10 @@ func loadKrakenURL() (*url.URL, error) {
 }
 
 type flagSet struct {
-	ServerAddBind string
+	ServerAddBind    string
+	MountTarget      string
+	FileServerType   string
+	FileServerParams string
 }
 
 func clientCmd(client *client, flags *flagSet, runFn func(*client, *flagSet, *cobra.Command, []string)) func(*cobra.Command, []string) {
@@ -60,8 +67,8 @@ func main() {
 
 	serversGetCmd := &cobra.Command{
 		Use:   "ls",
-		Short: "Lists the available servers",
-		Long:  "Lists the available servers",
+		Short: "List the available servers",
+		Long:  "List the available servers",
 		Run:   clientCmd(client, flags, serverList),
 	}
 
@@ -71,30 +78,69 @@ func main() {
 		Long:  "Add a new server listening on PORT, or a random port if not provided",
 		Run:   clientCmd(client, flags, serverAdd),
 	}
-	serverAddCmd.Flags().StringVarP(&flags.ServerAddBind, "bind", "b", "", "Address to bind to, defaults to not bind.")
+	serverAddCmd.Flags().StringVarP(&flags.ServerAddBind, "bind", "b", "", "Address to bind to, defaults to not bind")
 
 	serverRmCmd := &cobra.Command{
 		Use:   "rm PORT",
-		Short: "Removes a server",
-		Long:  "Removes a server listening on PORT",
+		Short: "Remove a server",
+		Long:  "Remove a server listening on PORT",
 		Run:   clientCmd(client, flags, serverRm),
 	}
 
 	serverClearCmd := &cobra.Command{
 		Use:   "clear",
-		Short: "Removes all servers",
-		Long:  "Removes all available servers",
+		Short: "Remove all servers",
+		Long:  "Remove all available servers",
 		Run:   clientCmd(client, flags, serverRmAll),
+	}
+
+	mountsGetCmd := &cobra.Command{
+		Use:   "lsmount PORT",
+		Short: "List the mounts of a server",
+		Long:  "List the mounts of a the server listening on PORT",
+		Run:   clientCmd(client, flags, mountList),
+	}
+
+	mountAddCmd := &cobra.Command{
+		Use:   "mount PORT SOURCE",
+		Short: "Mount a directory on a server",
+		Long: `Mount the SOURCE directory on the server listening on PORT.
+By default, SOURCE is mounted on /$(basename SOURCE)`,
+		Run: clientCmd(client, flags, mountAdd),
+	}
+	mountAddCmd.Flags().StringVarP(&flags.MountTarget, "target", "t", "", "Alternate mount target; it must start with / and not end with /")
+	mountAddCmd.Flags().StringVarP(&flags.FileServerType, "fs", "f", "default", "File server type to use for this mount point")
+	mountAddCmd.Flags().StringVarP(&flags.FileServerParams, "fsp", "p", "{}", "File server params; they must be specified as a valid JSON object.")
+
+	mountRmCmd := &cobra.Command{
+		Use:   "umount PORT MOUNT_ID",
+		Short: "Unmount a directory on a server",
+		Long:  "Removes the mount point MOUNT_ID, on the server listening on PORT",
+		Run:   clientCmd(client, flags, mountRm),
+	}
+
+	fileServersGetCmd := &cobra.Command{
+		Use:   "fileservers",
+		Short: "Lists the available file servers",
+		Long:  "Lists the available file servers",
+		Run:   clientCmd(client, flags, fileServerList),
 	}
 
 	rootCmd := &cobra.Command{
 		Use: "krakenctl",
 	}
 	rootCmd.AddCommand(
+		// server commands
 		serversGetCmd,
 		serverAddCmd,
 		serverRmCmd,
 		serverClearCmd,
+		// mount commands
+		mountsGetCmd,
+		mountAddCmd,
+		mountRmCmd,
+		// fileserver commands
+		fileServersGetCmd,
 	)
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
@@ -134,13 +180,14 @@ func serverAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string
 		err error
 	)
 	if len(args) == 0 {
-		srv, err = client.AddServerWithRandomPort(flags.ServerAddBind)
+		srv, err = client.AddServerWithRandomPort(admin.CreateServerRequest{BindAddress: flags.ServerAddBind})
 	} else {
-		port, err := strconv.Atoi(args[0])
+		var port int
+		port, err = strconv.Atoi(args[0])
 		if err != nil {
 			log.Fatalf("error parsing port: %v", err)
 		}
-		srv, err = client.AddServer(flags.ServerAddBind, uint16(port))
+		srv, err = client.AddServer(uint16(port), admin.CreateServerRequest{BindAddress: flags.ServerAddBind})
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -150,11 +197,7 @@ func serverAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string
 }
 
 func serverRm(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
-	if len(args) == 0 {
-		cmd.Usage()
-		return
-	}
-	if len(args) > 1 {
+	if len(args) == 0 || len(args) > 1 {
 		cmd.Usage()
 		return
 	}
@@ -173,6 +216,88 @@ func serverRmAll(client *client, flags *flagSet, cmd *cobra.Command, args []stri
 		return
 	}
 	if err := client.RemoveAllServers(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func fileServerList(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+	if len(args) > 0 {
+		cmd.Usage()
+		return
+	}
+	fsrvs, err := client.GetFileServers()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(strings.Join(fsrvs, ", "))
+}
+
+func mountList(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+	if len(args) == 0 || len(args) > 1 {
+		cmd.Usage()
+		return
+	}
+	port, err := strconv.Atoi(args[0])
+	if err != nil {
+		log.Fatalf("error parsing port: %v", err)
+	}
+	mounts, err := client.GetMounts(uint16(port))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, mount := range mounts {
+		fmt.Printf("%s: %s -> %s\n", mount.ID, mount.Source, mount.Target)
+	}
+}
+
+func mountAdd(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+	if len(args) == 0 || len(args) > 2 {
+		cmd.Usage()
+		return
+	}
+	port, err := strconv.Atoi(args[0])
+	if err != nil {
+		log.Fatalf("error parsing port: %v", err)
+	}
+	source, err := filepath.Abs(args[1])
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	target := "/" + filepath.Base(source)
+	if flags.MountTarget != "" {
+		target = flags.MountTarget
+	}
+	var fsParams fileserver.Params
+	if err := json.Unmarshal([]byte(flags.FileServerParams), &fsParams); err != nil {
+		log.Fatal(err)
+	}
+
+	mount, err := client.AddMount(uint16(port), admin.CreateServerMountRequest{
+		target,
+		source,
+		flags.FileServerType,
+		fsParams,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%s: %s -> %s\n", mount.ID, mount.Source, mount.Target)
+}
+
+func mountRm(client *client, flags *flagSet, cmd *cobra.Command, args []string) {
+	if len(args) == 0 || len(args) > 2 {
+		cmd.Usage()
+		return
+	}
+	port, err := strconv.Atoi(args[0])
+	if err != nil {
+		log.Fatalf("error parsing port: %v", err)
+	}
+	mountID := args[1]
+	if err := client.RemoveMount(uint16(port), mountID); err != nil {
 		log.Fatal(err)
 	}
 }
