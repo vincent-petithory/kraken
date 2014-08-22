@@ -14,25 +14,43 @@ import (
 	"github.com/vincent-petithory/kraken/fileserver"
 )
 
-var adminAddr string
-
 const (
 	// Environnement var for the addr of the admin service.
 	// It takes precedence on the -http flag.
 	envKrakenAddr = "KRAKEN_ADDR"
 	// Environnement var for the base URL of the admin service.
 	envKrakenURL = "KRAKEN_URL"
+	// Default value of KRAKEN_ADDR
+	defaultAddr = "localhost:4214"
 )
 
 func init() {
-	flag.StringVar(&adminAddr, "http", "localhost:4214", "The address on which the admin http api will listen on. Defaults to :4214")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr,
+			`Usage: krakend
+
+krakend is an on-demand http server. It creates http servers at runtime through a RESTful API.
+Those servers are meant to serve static files.
+
+Environment vars
+----------------
+
+krakend takes no arguments and is configured through the following environment variables:
+
+    %s: Address to bind to and port to listen to; defaults to %s
+    %s: URL on which the API is accessible; defaults to http://{KRAKEN_ADDR}
+
+See krakenctl for a command-line client of the API.
+`, envKrakenAddr, defaultAddr, envKrakenURL)
+	}
 	flag.Parse()
 }
 
 func main() {
+	log.SetOutput(os.Stdout)
+	adminAddr := defaultAddr
 	// Register fileservers
 	fsf := make(fileserver.Factory)
-
 	// Init server pool, run existing servers and listen for new ones
 	serverPool := kraken.NewServerPool(fsf)
 	go serverPool.ListenAndRun()
@@ -46,9 +64,6 @@ func main() {
 	ln, err := net.Listen("tcp", adminAddr)
 	if err != nil {
 		log.Fatal(err)
-	}
-	srv := &http.Server{
-		Handler: sph,
 	}
 
 	var (
@@ -64,6 +79,9 @@ func main() {
 	}
 	sph.SetBaseURL(adminURL)
 
+	srv := &http.Server{
+		Handler: sph,
+	}
 	log.Printf("[admin] Listening on %s", ln.Addr())
 	log.Printf("[admin] Available on %s", sph.BaseURL())
 	log.Fatal(srv.Serve(ln))
