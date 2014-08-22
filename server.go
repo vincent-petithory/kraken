@@ -116,7 +116,7 @@ func (mm *MountMap) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if maxMountTargetLen == 0 {
-		http.NotFound(w, r)
+		http.Error(w, fmt.Sprintf("%s: mount target or file not found", r.URL.Path), http.StatusNotFound)
 		mm.mu.RUnlock()
 		return
 	}
