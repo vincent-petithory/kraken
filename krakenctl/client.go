@@ -15,7 +15,7 @@ import (
 type client struct {
 	c      *http.Client
 	url    *url.URL
-	routes *admin.ServerPoolAdminRoutes
+	routes *admin.ServerPoolRoutes
 }
 
 func (c *client) newRequest(method string, route admin.Route, v interface{}) (*http.Request, error) {

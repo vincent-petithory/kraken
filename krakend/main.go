@@ -38,7 +38,7 @@ func main() {
 	go serverPool.ListenAndRun()
 
 	// Start administration server
-	spah := admin.NewServerPoolAdminHandler(serverPool)
+	sph := admin.NewServerPoolHandler(serverPool)
 
 	if envAdminAddr := os.Getenv(envKrakenAddr); envAdminAddr != "" {
 		adminAddr = envAdminAddr
@@ -48,7 +48,7 @@ func main() {
 		log.Fatal(err)
 	}
 	srv := &http.Server{
-		Handler: spah,
+		Handler: sph,
 	}
 
 	var (
@@ -62,9 +62,9 @@ func main() {
 	if urlErr != nil {
 		log.Fatal(urlErr)
 	}
-	spah.SetBaseURL(adminURL)
+	sph.SetBaseURL(adminURL)
 
 	log.Printf("[admin] Listening on %s", ln.Addr())
-	log.Printf("[admin] Available on %s", spah.BaseURL())
+	log.Printf("[admin] Available on %s", sph.BaseURL())
 	log.Fatal(srv.Serve(ln))
 }

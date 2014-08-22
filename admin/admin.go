@@ -5,22 +5,22 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/handlers"
-	"github.com/gorilla/mux"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 
+	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
 	"github.com/vincent-petithory/kraken"
 	"github.com/vincent-petithory/kraken/fileserver"
 )
 
-type serverPoolAdminHandler struct {
+type serverPoolHandler struct {
 	*kraken.ServerPool
 	h      http.Handler
-	routes *ServerPoolAdminRoutes
+	routes *ServerPoolRoutes
 }
 
 const (
@@ -32,7 +32,7 @@ const (
 )
 
 type Route interface {
-	URL(*ServerPoolAdminRoutes) *url.URL
+	URL(*ServerPoolRoutes) *url.URL
 }
 
 type (
@@ -50,68 +50,68 @@ type (
 	FileServersRoute struct{}
 )
 
-func (r ServersRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
-	return spar.url(routeServers)
+func (r ServersRoute) URL(spr *ServerPoolRoutes) *url.URL {
+	return spr.url(routeServers)
 }
-func (r ServersSelfRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
-	return spar.url(routeServersSelf, "port", strconv.Itoa(int(r.Port)))
+func (r ServersSelfRoute) URL(spr *ServerPoolRoutes) *url.URL {
+	return spr.url(routeServersSelf, "port", strconv.Itoa(int(r.Port)))
 }
-func (r ServersSelfMountsRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
-	return spar.url(routeServersSelfMounts, "port", strconv.Itoa(int(r.Port)))
+func (r ServersSelfMountsRoute) URL(spr *ServerPoolRoutes) *url.URL {
+	return spr.url(routeServersSelfMounts, "port", strconv.Itoa(int(r.Port)))
 }
-func (r ServersSelfMountsSelfRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
-	return spar.url(routeServersSelfMountsSelf, "port", strconv.Itoa(int(r.Port)), "mount", r.ID)
+func (r ServersSelfMountsSelfRoute) URL(spr *ServerPoolRoutes) *url.URL {
+	return spr.url(routeServersSelfMountsSelf, "port", strconv.Itoa(int(r.Port)), "mount", r.ID)
 }
-func (r FileServersRoute) URL(spar *ServerPoolAdminRoutes) *url.URL {
-	return spar.url(routeFileServers)
+func (r FileServersRoute) URL(spr *ServerPoolRoutes) *url.URL {
+	return spr.url(routeFileServers)
 }
 
-type AdminAPIErrorType string
+type APIErrorType string
 
 const (
-	apiErrTypeBadRequest  AdminAPIErrorType = "bad_request_error"
-	apiErrTypeAPIInternal                   = "api_internal_error"
+	apiErrTypeBadRequest  APIErrorType = "bad_request_error"
+	apiErrTypeAPIInternal              = "api_internal_error"
 )
 
-type AdminAPIError struct {
-	Type AdminAPIErrorType `json:"type"`
-	Msg  string            `json:"msg"`
+type APIError struct {
+	Type APIErrorType `json:"type"`
+	Msg  string       `json:"msg"`
 }
 
-func (e *AdminAPIError) String() string {
+func (e *APIError) String() string {
 	return fmt.Sprintf("%s: %s", e.Type, e.Msg)
 }
 
-func (e *AdminAPIError) Error() string {
+func (e *APIError) Error() string {
 	return e.Msg
 }
 
-type ServerPoolAdminRoutes struct {
+type ServerPoolRoutes struct {
 	r       *mux.Router
 	BaseURL *url.URL
 }
 
-func (spar *ServerPoolAdminRoutes) url(name string, params ...string) *url.URL {
+func (spr *ServerPoolRoutes) url(name string, params ...string) *url.URL {
 	var urlPath string
-	if u, err := spar.r.Get(name).URLPath(params...); err != nil {
+	if u, err := spr.r.Get(name).URLPath(params...); err != nil {
 		log.Print(err)
 		urlPath = ""
 	} else {
 		urlPath = u.Path
 	}
 	var u url.URL
-	if spar.BaseURL != nil {
-		u = (*spar.BaseURL)
+	if spr.BaseURL != nil {
+		u = (*spr.BaseURL)
 	}
 	u.Path = urlPath
 	return &u
 }
 
-func (spar *ServerPoolAdminRoutes) RouteURL(r Route) *url.URL {
-	return r.URL(spar)
+func (spr *ServerPoolRoutes) RouteURL(r Route) *url.URL {
+	return r.URL(spr)
 }
 
-func NewServerPoolAdminRoutes() *ServerPoolAdminRoutes {
+func NewServerPoolRoutes() *ServerPoolRoutes {
 	r := mux.NewRouter()
 	apiRouter := r.PathPrefix("/api/").Subrouter()
 	apiRouter.Path("/servers").Name(routeServers)
@@ -119,54 +119,54 @@ func NewServerPoolAdminRoutes() *ServerPoolAdminRoutes {
 	apiRouter.Path("/servers/{port:[0-9]{1,5}}/mounts").Name(routeServersSelfMounts)
 	apiRouter.Path("/servers/{port:[0-9]{1,5}}/mounts/{mount}").Name(routeServersSelfMountsSelf)
 	apiRouter.Path("/fileservers").Name(routeFileServers)
-	return &ServerPoolAdminRoutes{r: r}
+	return &ServerPoolRoutes{r: r}
 }
 
-func NewServerPoolAdminHandler(serverPool *kraken.ServerPool) *serverPoolAdminHandler {
-	spah := serverPoolAdminHandler{
+func NewServerPoolHandler(serverPool *kraken.ServerPool) *serverPoolHandler {
+	sph := serverPoolHandler{
 		ServerPool: serverPool,
-		routes:     NewServerPoolAdminRoutes(),
+		routes:     NewServerPoolRoutes(),
 	}
-	spah.routes.r.Get(routeServers).Handler(handlers.MethodHandler{
-		"GET":    http.HandlerFunc(spah.getServers),
-		"POST":   http.HandlerFunc(spah.createServerWithRandomPort),
-		"DELETE": http.HandlerFunc(spah.removeServers),
+	sph.routes.r.Get(routeServers).Handler(handlers.MethodHandler{
+		"GET":    http.HandlerFunc(sph.getServers),
+		"POST":   http.HandlerFunc(sph.createServerWithRandomPort),
+		"DELETE": http.HandlerFunc(sph.removeServers),
 	})
-	spah.routes.r.Get(routeServersSelf).Handler(handlers.MethodHandler{
-		"GET":    http.HandlerFunc(spah.getServer),
-		"PUT":    http.HandlerFunc(spah.createServer),
-		"DELETE": http.HandlerFunc(spah.removeServer),
+	sph.routes.r.Get(routeServersSelf).Handler(handlers.MethodHandler{
+		"GET":    http.HandlerFunc(sph.getServer),
+		"PUT":    http.HandlerFunc(sph.createServer),
+		"DELETE": http.HandlerFunc(sph.removeServer),
 	})
-	spah.routes.r.Get(routeServersSelfMounts).Handler(handlers.MethodHandler{
-		"GET":    http.HandlerFunc(spah.getServerMounts),
-		"POST":   http.HandlerFunc(spah.createServerMount),
-		"DELETE": http.HandlerFunc(spah.removeServerMounts),
+	sph.routes.r.Get(routeServersSelfMounts).Handler(handlers.MethodHandler{
+		"GET":    http.HandlerFunc(sph.getServerMounts),
+		"POST":   http.HandlerFunc(sph.createServerMount),
+		"DELETE": http.HandlerFunc(sph.removeServerMounts),
 	})
-	spah.routes.r.Get(routeServersSelfMountsSelf).Handler(handlers.MethodHandler{
-		"GET":    http.HandlerFunc(spah.getServerMount),
-		"DELETE": http.HandlerFunc(spah.removeServerMount),
+	sph.routes.r.Get(routeServersSelfMountsSelf).Handler(handlers.MethodHandler{
+		"GET":    http.HandlerFunc(sph.getServerMount),
+		"DELETE": http.HandlerFunc(sph.removeServerMount),
 	})
-	spah.routes.r.Get(routeFileServers).Handler(handlers.MethodHandler{
-		"GET": http.HandlerFunc(spah.getFileServers),
+	sph.routes.r.Get(routeFileServers).Handler(handlers.MethodHandler{
+		"GET": http.HandlerFunc(sph.getFileServers),
 	})
-	spah.h = spah.routes.r
-	return &spah
+	sph.h = sph.routes.r
+	return &sph
 }
 
-func (spah *serverPoolAdminHandler) SetBaseURL(u *url.URL) {
-	spah.routes.BaseURL = u
+func (sph *serverPoolHandler) SetBaseURL(u *url.URL) {
+	sph.routes.BaseURL = u
 }
 
-func (spah *serverPoolAdminHandler) BaseURL() *url.URL {
-	return &(*(spah.routes.BaseURL))
+func (sph *serverPoolHandler) BaseURL() *url.URL {
+	return &(*(sph.routes.BaseURL))
 }
 
-func (spah *serverPoolAdminHandler) writeLocation(w http.ResponseWriter, route Route) {
-	w.Header().Set("Location", spah.routes.RouteURL(route).String())
+func (sph *serverPoolHandler) writeLocation(w http.ResponseWriter, route Route) {
+	w.Header().Set("Location", sph.routes.RouteURL(route).String())
 }
 
-func (spah *serverPoolAdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	spah.h.ServeHTTP(w, r)
+func (sph *serverPoolHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	sph.h.ServeHTTP(w, r)
 }
 
 type Server struct {
@@ -206,14 +206,14 @@ func mountID(target string) string {
 	return fmt.Sprintf("%x", b)[0:7]
 }
 
-func (spah *serverPoolAdminHandler) serverOr404(w http.ResponseWriter, r *http.Request) *kraken.Server {
+func (sph *serverPoolHandler) serverOr404(w http.ResponseWriter, r *http.Request) *kraken.Server {
 	sport := mux.Vars(r)["port"]
 	port, err := strconv.Atoi(sport)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return nil
 	}
-	srv := spah.ServerPool.Get(uint16(port))
+	srv := sph.ServerPool.Get(uint16(port))
 	if srv == nil {
 		http.Error(w, fmt.Sprintf("server %d not found", port), http.StatusNotFound)
 		return nil
@@ -221,10 +221,10 @@ func (spah *serverPoolAdminHandler) serverOr404(w http.ResponseWriter, r *http.R
 	return srv
 }
 
-func (spah *serverPoolAdminHandler) getServers(w http.ResponseWriter, r *http.Request) {
+func (sph *serverPoolHandler) getServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	srvs := make([]Server, 0, len(spah.ServerPool.Srvs))
-	for _, srv := range spah.ServerPool.Srvs {
+	srvs := make([]Server, 0, len(sph.ServerPool.Srvs))
+	for _, srv := range sph.ServerPool.Srvs {
 		srvs = append(srvs, *newServerDataFromServer(srv))
 	}
 	if err := json.NewEncoder(w).Encode(srvs); err != nil {
@@ -232,8 +232,8 @@ func (spah *serverPoolAdminHandler) getServers(w http.ResponseWriter, r *http.Re
 	}
 }
 
-func (spah *serverPoolAdminHandler) getServer(w http.ResponseWriter, r *http.Request) {
-	srv := spah.serverOr404(w, r)
+func (sph *serverPoolHandler) getServer(w http.ResponseWriter, r *http.Request) {
+	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
@@ -247,7 +247,7 @@ type CreateServerRequest struct {
 	BindAddress string `json:"bind_address"`
 }
 
-func (spah *serverPoolAdminHandler) createServerWithRandomPort(w http.ResponseWriter, r *http.Request) {
+func (sph *serverPoolHandler) createServerWithRandomPort(w http.ResponseWriter, r *http.Request) {
 	var req CreateServerRequest
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -256,21 +256,21 @@ func (spah *serverPoolAdminHandler) createServerWithRandomPort(w http.ResponseWr
 	}
 
 	addr := net.JoinHostPort(req.BindAddress, "0")
-	srv, err := spah.ServerPool.Add(addr)
+	srv, err := sph.ServerPool.Add(addr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Wait for the server to be started
 	<-srv.Started
-	spah.writeLocation(w, ServersSelfRoute{srv.Port})
+	sph.writeLocation(w, ServersSelfRoute{srv.Port})
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
 		log.Print(err)
 	}
 }
 
-func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.Request) {
+func (sph *serverPoolHandler) createServer(w http.ResponseWriter, r *http.Request) {
 	var req CreateServerRequest
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -285,7 +285,7 @@ func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.
 	}
 
 	addr := net.JoinHostPort(req.BindAddress, strconv.Itoa(port))
-	srv, err := spah.ServerPool.Add(addr)
+	srv, err := sph.ServerPool.Add(addr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -298,12 +298,12 @@ func (spah *serverPoolAdminHandler) createServer(w http.ResponseWriter, r *http.
 	}
 }
 
-func (spah *serverPoolAdminHandler) removeServers(w http.ResponseWriter, r *http.Request) {
+func (sph *serverPoolHandler) removeServers(w http.ResponseWriter, r *http.Request) {
 	var errs []error
-	srvs := make([]*kraken.Server, len(spah.ServerPool.Srvs))
-	copy(srvs, spah.ServerPool.Srvs)
+	srvs := make([]*kraken.Server, len(sph.ServerPool.Srvs))
+	copy(srvs, sph.ServerPool.Srvs)
 	for _, srv := range srvs {
-		if ok, err := spah.ServerPool.Remove(srv.Port); err != nil {
+		if ok, err := sph.ServerPool.Remove(srv.Port); err != nil {
 			errs = append(errs, err)
 		} else if !ok {
 			err := fmt.Errorf("error shutting down server on port %d", srv.Port)
@@ -315,7 +315,7 @@ func (spah *serverPoolAdminHandler) removeServers(w http.ResponseWriter, r *http
 		for _, err := range errs {
 			fmt.Fprintln(&bufMsg, err.Error())
 		}
-		apiErr := &AdminAPIError{apiErrTypeAPIInternal, bufMsg.String()}
+		apiErr := &APIError{apiErrTypeAPIInternal, bufMsg.String()}
 		w.WriteHeader(http.StatusInternalServerError)
 		if err := json.NewEncoder(w).Encode(apiErr); err != nil {
 			log.Print(err)
@@ -325,12 +325,12 @@ func (spah *serverPoolAdminHandler) removeServers(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusOK)
 }
 
-func (spah *serverPoolAdminHandler) removeServer(w http.ResponseWriter, r *http.Request) {
-	srv := spah.serverOr404(w, r)
+func (sph *serverPoolHandler) removeServer(w http.ResponseWriter, r *http.Request) {
+	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
-	if ok, err := spah.ServerPool.Remove(srv.Port); err != nil {
+	if ok, err := sph.ServerPool.Remove(srv.Port); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	} else if !ok {
@@ -340,8 +340,8 @@ func (spah *serverPoolAdminHandler) removeServer(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusOK)
 }
 
-func (spah *serverPoolAdminHandler) getServerMounts(w http.ResponseWriter, r *http.Request) {
-	srv := spah.serverOr404(w, r)
+func (sph *serverPoolHandler) getServerMounts(w http.ResponseWriter, r *http.Request) {
+	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
@@ -360,8 +360,8 @@ func (spah *serverPoolAdminHandler) getServerMounts(w http.ResponseWriter, r *ht
 	}
 }
 
-func (spah *serverPoolAdminHandler) removeServerMounts(w http.ResponseWriter, r *http.Request) {
-	srv := spah.serverOr404(w, r)
+func (sph *serverPoolHandler) removeServerMounts(w http.ResponseWriter, r *http.Request) {
+	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
@@ -372,8 +372,8 @@ func (spah *serverPoolAdminHandler) removeServerMounts(w http.ResponseWriter, r 
 	w.WriteHeader(http.StatusOK)
 }
 
-func (spah *serverPoolAdminHandler) getServerMount(w http.ResponseWriter, r *http.Request) {
-	srv := spah.serverOr404(w, r)
+func (sph *serverPoolHandler) getServerMount(w http.ResponseWriter, r *http.Request) {
+	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
@@ -409,8 +409,8 @@ type CreateServerMountRequest struct {
 	FsParams fileserver.Params `json:"fs_params"`
 }
 
-func (spah *serverPoolAdminHandler) createServerMount(w http.ResponseWriter, r *http.Request) {
-	srv := spah.serverOr404(w, r)
+func (sph *serverPoolHandler) createServerMount(w http.ResponseWriter, r *http.Request) {
+	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
@@ -430,15 +430,15 @@ func (spah *serverPoolAdminHandler) createServerMount(w http.ResponseWriter, r *
 		Source: srv.MountMap.GetSource(req.Target),
 		Target: req.Target,
 	}
-	spah.writeLocation(w, ServersSelfMountsSelfRoute{Port: srv.Port, ID: mount.ID})
+	sph.writeLocation(w, ServersSelfMountsSelfRoute{Port: srv.Port, ID: mount.ID})
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(mount); err != nil {
 		log.Print(err)
 	}
 }
 
-func (spah *serverPoolAdminHandler) removeServerMount(w http.ResponseWriter, r *http.Request) {
-	srv := spah.serverOr404(w, r)
+func (sph *serverPoolHandler) removeServerMount(w http.ResponseWriter, r *http.Request) {
+	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
 	}
@@ -460,9 +460,9 @@ func (spah *serverPoolAdminHandler) removeServerMount(w http.ResponseWriter, r *
 
 type FileServerTypes []string
 
-func (spah *serverPoolAdminHandler) getFileServers(w http.ResponseWriter, r *http.Request) {
+func (sph *serverPoolHandler) getFileServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(FileServerTypes(spah.ServerPool.Fsf.Types())); err != nil {
+	if err := json.NewEncoder(w).Encode(FileServerTypes(sph.ServerPool.Fsf.Types())); err != nil {
 		log.Print(err)
 	}
 }

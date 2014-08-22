@@ -60,7 +60,7 @@ func main() {
 	client := &client{
 		c:      &http.Client{},
 		url:    krakenURL,
-		routes: admin.NewServerPoolAdminRoutes(),
+		routes: admin.NewServerPoolRoutes(),
 	}
 
 	flags := &flagSet{}
