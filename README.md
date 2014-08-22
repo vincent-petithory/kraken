@@ -3,6 +3,7 @@ Those servers are meant to serve static files.
 It needs almost no configuration and can (will) save state across restarts.
 
 Typical uses are sharing files quickly, on LAN or from a remote box.
+If you happen to often use `python -m http.server`, then this project should be of interest.
 
 ## Quickstart
 
@@ -14,7 +15,7 @@ $ krakend
 ~~~
 
 Here's a sample session, using the `krakenctl` client.
-It creates a http server and makes it serve $HOME/Pictures on http://localhost:4567/pics.
+It creates a http server and makes it serve `$HOME/Pictures` on `http://localhost:4567/pics`.
 
 ~~~ shell
 $ # Create a http server listening on port 4567, and bind it to localhost.
