@@ -161,12 +161,14 @@ func serverList(client *client, flags *flagSet, cmd *cobra.Command, args []strin
 		addr := net.JoinHostPort(srv.BindAddress, strconv.Itoa(int(srv.Port)))
 		fmt.Print(addr)
 		if len(srv.Mounts) == 0 {
-			fmt.Println(": no mounts")
+			fmt.Println(" (no mounts)")
 			continue
 		}
+		fmt.Println()
 		for _, mount := range srv.Mounts {
-			fmt.Printf(" * %s: %s -> %s\n", mount.ID, mount.Source, mount.Target)
+			fmt.Printf("  * %s: %s -> %s\n", mount.ID, mount.Source, mount.Target)
 		}
+		fmt.Println()
 	}
 }
 
