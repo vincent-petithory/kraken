@@ -251,7 +251,7 @@ func mountList(client *client.Client, flags *flagSet, cmd *cobra.Command, args [
 }
 
 func mountAdd(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
-	if len(args) == 0 || len(args) > 2 {
+	if len(args) != 2 {
 		cmd.Usage()
 		return
 	}
