@@ -5,6 +5,16 @@ It needs almost no configuration and can (will) save state across restarts.
 Typical uses are sharing files quickly, on LAN or from a remote box.
 If you happen to often use `python -m http.server`, then this project should be of interest.
 
+## Install
+
+Kraken is written in Go. The first step is to install Go on your system, if it isn't done yet.
+
+Go is packaged for most linux distributions, but you can install it from [a binary distribution or from source](http://golang.org/doc/install).
+To install the *kraken* programs, do `go get github.com/vincent-petithory/kraken/...`
+You can update an installation of *kraken* with `go get -u github.com/vincent-petithory/kraken/...`
+
+Upon install, `krakend` and `krakenctl` are available.
+
 ## Quickstart
 
 ~~~ shell
