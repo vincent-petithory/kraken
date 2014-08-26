@@ -17,7 +17,7 @@ import (
 	"github.com/vincent-petithory/kraken/fileserver"
 )
 
-type serverPoolHandler struct {
+type ServerPoolHandler struct {
 	*kraken.ServerPool
 	h      http.Handler
 	routes *ServerPoolRoutes
@@ -122,8 +122,8 @@ func NewServerPoolRoutes() *ServerPoolRoutes {
 	return &ServerPoolRoutes{r: r}
 }
 
-func NewServerPoolHandler(serverPool *kraken.ServerPool) *serverPoolHandler {
-	sph := serverPoolHandler{
+func NewServerPoolHandler(serverPool *kraken.ServerPool) *ServerPoolHandler {
+	sph := ServerPoolHandler{
 		ServerPool: serverPool,
 		routes:     NewServerPoolRoutes(),
 	}
@@ -153,19 +153,19 @@ func NewServerPoolHandler(serverPool *kraken.ServerPool) *serverPoolHandler {
 	return &sph
 }
 
-func (sph *serverPoolHandler) SetBaseURL(u *url.URL) {
+func (sph *ServerPoolHandler) SetBaseURL(u *url.URL) {
 	sph.routes.BaseURL = u
 }
 
-func (sph *serverPoolHandler) BaseURL() *url.URL {
+func (sph *ServerPoolHandler) BaseURL() *url.URL {
 	return &(*(sph.routes.BaseURL))
 }
 
-func (sph *serverPoolHandler) writeLocation(w http.ResponseWriter, route Route) {
+func (sph *ServerPoolHandler) writeLocation(w http.ResponseWriter, route Route) {
 	w.Header().Set("Location", sph.routes.RouteURL(route).String())
 }
 
-func (sph *serverPoolHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sph.h.ServeHTTP(w, r)
 }
 
@@ -206,7 +206,7 @@ func mountID(target string) string {
 	return fmt.Sprintf("%x", b)[0:7]
 }
 
-func (sph *serverPoolHandler) serverOr404(w http.ResponseWriter, r *http.Request) *kraken.Server {
+func (sph *ServerPoolHandler) serverOr404(w http.ResponseWriter, r *http.Request) *kraken.Server {
 	sport := mux.Vars(r)["port"]
 	port, err := strconv.Atoi(sport)
 	if err != nil {
@@ -221,7 +221,7 @@ func (sph *serverPoolHandler) serverOr404(w http.ResponseWriter, r *http.Request
 	return srv
 }
 
-func (sph *serverPoolHandler) getServers(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) getServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	srvs := make([]Server, 0, len(sph.ServerPool.Srvs))
 	for _, srv := range sph.ServerPool.Srvs {
@@ -232,7 +232,7 @@ func (sph *serverPoolHandler) getServers(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-func (sph *serverPoolHandler) getServer(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) getServer(w http.ResponseWriter, r *http.Request) {
 	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
@@ -247,7 +247,7 @@ type CreateServerRequest struct {
 	BindAddress string `json:"bind_address"`
 }
 
-func (sph *serverPoolHandler) createServerWithRandomPort(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) createServerWithRandomPort(w http.ResponseWriter, r *http.Request) {
 	var req CreateServerRequest
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -270,7 +270,7 @@ func (sph *serverPoolHandler) createServerWithRandomPort(w http.ResponseWriter, 
 	}
 }
 
-func (sph *serverPoolHandler) createServer(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) createServer(w http.ResponseWriter, r *http.Request) {
 	var req CreateServerRequest
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -298,7 +298,7 @@ func (sph *serverPoolHandler) createServer(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func (sph *serverPoolHandler) removeServers(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) removeServers(w http.ResponseWriter, r *http.Request) {
 	var errs []error
 	srvs := make([]*kraken.Server, len(sph.ServerPool.Srvs))
 	copy(srvs, sph.ServerPool.Srvs)
@@ -325,7 +325,7 @@ func (sph *serverPoolHandler) removeServers(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusOK)
 }
 
-func (sph *serverPoolHandler) removeServer(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) removeServer(w http.ResponseWriter, r *http.Request) {
 	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
@@ -340,7 +340,7 @@ func (sph *serverPoolHandler) removeServer(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 }
 
-func (sph *serverPoolHandler) getServerMounts(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) getServerMounts(w http.ResponseWriter, r *http.Request) {
 	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
@@ -360,7 +360,7 @@ func (sph *serverPoolHandler) getServerMounts(w http.ResponseWriter, r *http.Req
 	}
 }
 
-func (sph *serverPoolHandler) removeServerMounts(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) removeServerMounts(w http.ResponseWriter, r *http.Request) {
 	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
@@ -372,7 +372,7 @@ func (sph *serverPoolHandler) removeServerMounts(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusOK)
 }
 
-func (sph *serverPoolHandler) getServerMount(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) getServerMount(w http.ResponseWriter, r *http.Request) {
 	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
@@ -409,7 +409,7 @@ type CreateServerMountRequest struct {
 	FsParams fileserver.Params `json:"fs_params"`
 }
 
-func (sph *serverPoolHandler) createServerMount(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) createServerMount(w http.ResponseWriter, r *http.Request) {
 	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
@@ -437,7 +437,7 @@ func (sph *serverPoolHandler) createServerMount(w http.ResponseWriter, r *http.R
 	}
 }
 
-func (sph *serverPoolHandler) removeServerMount(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) removeServerMount(w http.ResponseWriter, r *http.Request) {
 	srv := sph.serverOr404(w, r)
 	if srv == nil {
 		return
@@ -460,7 +460,7 @@ func (sph *serverPoolHandler) removeServerMount(w http.ResponseWriter, r *http.R
 
 type FileServerTypes []string
 
-func (sph *serverPoolHandler) getFileServers(w http.ResponseWriter, r *http.Request) {
+func (sph *ServerPoolHandler) getFileServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(FileServerTypes(sph.ServerPool.Fsf.Types())); err != nil {
 		log.Print(err)
