@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -13,16 +14,10 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/justinas/alice"
 	"github.com/vincent-petithory/kraken"
 	"github.com/vincent-petithory/kraken/fileserver"
 )
-
-type ServerPoolHandler struct {
-	*kraken.ServerPool
-	Log    *log.Logger
-	h      http.Handler
-	routes *ServerPoolRoutes
-}
 
 const (
 	routeServers               = "servers"
@@ -128,34 +123,63 @@ func NewServerPoolRoutes() *ServerPoolRoutes {
 	return &ServerPoolRoutes{r: r}
 }
 
+type ServerPoolHandler struct {
+	*kraken.ServerPool
+	Log    *log.Logger
+	h      http.Handler
+	routes *ServerPoolRoutes
+}
+
 func NewServerPoolHandler(serverPool *kraken.ServerPool) *ServerPoolHandler {
 	sph := ServerPoolHandler{
 		ServerPool: serverPool,
 		routes:     NewServerPoolRoutes(),
 	}
-	sph.routes.r.Get(routeServers).Handler(handlers.MethodHandler{
+	chain := alice.New(
+		func(h http.Handler) http.Handler {
+			return handlers.ContentTypeHandler(h, "application/json")
+		},
+		handlers.HTTPMethodOverrideHandler,
+		handlers.CompressHandler,
+	)
+	sph.routes.r.Get(routeServers).Handler(chain.Then(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(sph.getServers),
 		"POST":   http.HandlerFunc(sph.createServerWithRandomPort),
 		"DELETE": http.HandlerFunc(sph.removeServers),
-	})
-	sph.routes.r.Get(routeServersSelf).Handler(handlers.MethodHandler{
+	}))
+	sph.routes.r.Get(routeServersSelf).Handler(chain.Then(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(sph.getServer),
 		"PUT":    http.HandlerFunc(sph.createServer),
 		"DELETE": http.HandlerFunc(sph.removeServer),
-	})
-	sph.routes.r.Get(routeServersSelfMounts).Handler(handlers.MethodHandler{
+	}))
+	sph.routes.r.Get(routeServersSelfMounts).Handler(chain.Then(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(sph.getServerMounts),
 		"POST":   http.HandlerFunc(sph.createServerMount),
 		"DELETE": http.HandlerFunc(sph.removeServerMounts),
-	})
-	sph.routes.r.Get(routeServersSelfMountsSelf).Handler(handlers.MethodHandler{
+	}))
+	sph.routes.r.Get(routeServersSelfMountsSelf).Handler(chain.Then(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(sph.getServerMount),
 		"DELETE": http.HandlerFunc(sph.removeServerMount),
-	})
+	}))
 	sph.routes.r.Get(routeFileServers).Handler(handlers.MethodHandler{
 		"GET": http.HandlerFunc(sph.getFileServers),
 	})
-	sph.h = sph.routes.r
+
+	dw := &dynamicWriter{func(b []byte) (int, error) {
+		if sph.Log != nil {
+			sph.Log.Printf("%s", b)
+		} else {
+			log.Printf("%s", b)
+		}
+		return len(b), nil
+	}}
+
+	routerChain := alice.New(
+		func(h http.Handler) http.Handler {
+			return handlers.CombinedLoggingHandler(dw, h)
+		},
+	)
+	sph.h = routerChain.Then(sph.routes.r)
 	return &sph
 }
 
@@ -524,4 +548,15 @@ func (sph *ServerPoolHandler) getFileServers(w http.ResponseWriter, r *http.Requ
 	if err := json.NewEncoder(w).Encode(FileServerTypes(sph.ServerPool.Fsf.Types())); err != nil {
 		sph.logErr(err)
 	}
+}
+
+type dynamicWriter struct {
+	wFn func([]byte) (int, error)
+}
+
+func (dw *dynamicWriter) Write(b []byte) (int, error) {
+	if dw.wFn != nil {
+		return dw.wFn(b)
+	}
+	return ioutil.Discard.Write(b)
 }
