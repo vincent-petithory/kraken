@@ -19,6 +19,7 @@ import (
 
 type ServerPoolHandler struct {
 	*kraken.ServerPool
+	Log    *log.Logger
 	h      http.Handler
 	routes *ServerPoolRoutes
 }
@@ -153,6 +154,33 @@ func NewServerPoolHandler(serverPool *kraken.ServerPool) *ServerPoolHandler {
 	return &sph
 }
 
+func (sph *ServerPoolHandler) logf(format string, args ...interface{}) {
+	if sph.Log != nil {
+		sph.Log.Printf(format, args...)
+	} else {
+		log.Printf(format, args...)
+	}
+}
+
+func (sph *ServerPoolHandler) logErr(v interface{}) {
+	if sph.Log != nil {
+		sph.Log.Printf("[error] %v", v)
+	} else {
+		log.Printf("[error] %v", v)
+	}
+}
+
+func (sph *ServerPoolHandler) logfSrv(srv *kraken.Server, format string, args ...interface{}) {
+	sph.logf(
+		fmt.Sprintf("[srv %d] %s", srv.Port, format),
+		args...,
+	)
+}
+
+func (sph *ServerPoolHandler) logErrSrv(srv *kraken.Server, v interface{}) {
+	sph.logfSrv(srv, "ERR: %v", v)
+}
+
 func (sph *ServerPoolHandler) SetBaseURL(u *url.URL) {
 	sph.routes.BaseURL = u
 }
@@ -228,7 +256,7 @@ func (sph *ServerPoolHandler) getServers(w http.ResponseWriter, r *http.Request)
 		srvs = append(srvs, *newServerDataFromServer(srv))
 	}
 	if err := json.NewEncoder(w).Encode(srvs); err != nil {
-		log.Print(err)
+		sph.logErr(err)
 	}
 }
 
@@ -239,7 +267,7 @@ func (sph *ServerPoolHandler) getServer(w http.ResponseWriter, r *http.Request) 
 	}
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
-		log.Print(err)
+		sph.logErr(err)
 	}
 }
 
@@ -263,10 +291,13 @@ func (sph *ServerPoolHandler) createServerWithRandomPort(w http.ResponseWriter, 
 	}
 	// Wait for the server to be started
 	<-srv.Started
+	sph.logf("created server %q", srv.Addr)
+	sph.logfSrv(srv, "server available on http://%s", srv.Addr)
+
 	sph.writeLocation(w, ServersSelfRoute{srv.Port})
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
-		log.Print(err)
+		sph.logErr(err)
 	}
 }
 
@@ -292,9 +323,11 @@ func (sph *ServerPoolHandler) createServer(w http.ResponseWriter, r *http.Reques
 	}
 	// Wait for the server to be started
 	<-srv.Started
+	sph.logf("created server %q", srv.Addr)
+	sph.logfSrv(srv, "server available on http://%s", srv.Addr)
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
-		log.Print(err)
+		sph.logErr(err)
 	}
 }
 
@@ -305,9 +338,13 @@ func (sph *ServerPoolHandler) removeServers(w http.ResponseWriter, r *http.Reque
 	for _, srv := range srvs {
 		if ok, err := sph.ServerPool.Remove(srv.Port); err != nil {
 			errs = append(errs, err)
+			sph.logErrSrv(srv, err)
 		} else if !ok {
-			err := fmt.Errorf("error shutting down server on port %d", srv.Port)
+			err := fmt.Errorf("unable to shut down server on port %d", srv.Port)
+			sph.logErrSrv(srv, "unable to shut down server")
 			errs = append(errs, err)
+		} else {
+			sph.logfSrv(srv, "server shut down")
 		}
 	}
 	if len(errs) > 0 {
@@ -315,11 +352,8 @@ func (sph *ServerPoolHandler) removeServers(w http.ResponseWriter, r *http.Reque
 		for _, err := range errs {
 			fmt.Fprintln(&bufMsg, err.Error())
 		}
-		apiErr := &APIError{apiErrTypeAPIInternal, bufMsg.String()}
 		w.WriteHeader(http.StatusInternalServerError)
-		if err := json.NewEncoder(w).Encode(apiErr); err != nil {
-			log.Print(err)
-		}
+		http.Error(w, bufMsg.String(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -334,8 +368,11 @@ func (sph *ServerPoolHandler) removeServer(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	} else if !ok {
-		err := fmt.Errorf("error shutting down server on port %d", srv.Port)
-		log.Print(err)
+		sph.logErrSrv(srv, "unable to shut down server")
+		http.Error(w, fmt.Sprintf("unable to shut down server on port %d", srv.Port), http.StatusInternalServerError)
+		return
+	} else {
+		sph.logfSrv(srv, "server shut down")
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -356,7 +393,7 @@ func (sph *ServerPoolHandler) getServerMounts(w http.ResponseWriter, r *http.Req
 	}
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(mounts); err != nil {
-		log.Print(err)
+		sph.logErr(err)
 	}
 }
 
@@ -367,7 +404,9 @@ func (sph *ServerPoolHandler) removeServerMounts(w http.ResponseWriter, r *http.
 	}
 	mountTargets := srv.MountMap.Targets()
 	for _, mountTarget := range mountTargets {
-		srv.MountMap.DeleteTarget(mountTarget)
+		if ok := srv.MountMap.DeleteTarget(mountTarget); ok {
+			sph.logfSrv(srv, "removed mount point %s", mountID(mountTarget))
+		}
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -398,7 +437,7 @@ func (sph *ServerPoolHandler) getServerMount(w http.ResponseWriter, r *http.Requ
 	}
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(mount); err != nil {
-		log.Print(err)
+		sph.logErr(err)
 	}
 }
 
@@ -420,7 +459,9 @@ func (sph *ServerPoolHandler) createServerMount(w http.ResponseWriter, r *http.R
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := srv.MountMap.Put(req.Target, req.Source, req.FsType, req.FsParams); err != nil {
+
+	exists, err := srv.MountMap.Put(req.Target, req.Source, req.FsType, req.FsParams)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -430,10 +471,16 @@ func (sph *ServerPoolHandler) createServerMount(w http.ResponseWriter, r *http.R
 		Source: srv.MountMap.GetSource(req.Target),
 		Target: req.Target,
 	}
+	if exists {
+		sph.logfSrv(srv, "updated mount point %s: mount %s on http://%s%s", mount.ID, mount.Source, srv.Addr, mount.Target)
+	} else {
+		sph.logfSrv(srv, "created mount point %s: mount %s on http://%s%s", mount.ID, mount.Source, srv.Addr, mount.Target)
+	}
+
 	sph.writeLocation(w, ServersSelfMountsSelfRoute{Port: srv.Port, ID: mount.ID})
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(mount); err != nil {
-		log.Print(err)
+		sph.logErr(err)
 	}
 }
 
@@ -455,6 +502,8 @@ func (sph *ServerPoolHandler) removeServerMount(w http.ResponseWriter, r *http.R
 		http.Error(w, fmt.Sprintf("server %d has no mount target %q", srv.Port, mountTarget), http.StatusNotFound)
 		return
 	}
+	sph.logfSrv(srv, "removed mount point %s", reqMountID)
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -463,6 +512,6 @@ type FileServerTypes []string
 func (sph *ServerPoolHandler) getFileServers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(FileServerTypes(sph.ServerPool.Fsf.Types())); err != nil {
-		log.Print(err)
+		sph.logErr(err)
 	}
 }
