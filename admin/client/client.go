@@ -30,7 +30,11 @@ func New(apiURL *url.URL) *Client {
 
 func (c *Client) newRequest(method string, route admin.Route, v interface{}) (*http.Request, error) {
 	u := *c.url
-	u.Path = route.URL(c.routes).Path
+	ru, err := route.URL(c.routes)
+	if err != nil {
+		return nil, err
+	}
+	u.Path = ru.Path
 	var body io.Reader
 	if v != nil {
 		b, err := json.Marshal(v)

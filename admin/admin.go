@@ -33,7 +33,7 @@ const (
 )
 
 type Route interface {
-	URL(*ServerPoolRoutes) *url.URL
+	URL(*ServerPoolRoutes) (*url.URL, error)
 }
 
 type (
@@ -51,19 +51,25 @@ type (
 	FileServersRoute struct{}
 )
 
-func (r ServersRoute) URL(spr *ServerPoolRoutes) *url.URL {
+type BadRouteError string
+
+func (e BadRouteError) Error() string {
+	return fmt.Sprintf("bad route name and/or parameters: %s", string(e))
+}
+
+func (r ServersRoute) URL(spr *ServerPoolRoutes) (*url.URL, error) {
 	return spr.url(routeServers)
 }
-func (r ServersSelfRoute) URL(spr *ServerPoolRoutes) *url.URL {
+func (r ServersSelfRoute) URL(spr *ServerPoolRoutes) (*url.URL, error) {
 	return spr.url(routeServersSelf, "port", strconv.Itoa(int(r.Port)))
 }
-func (r ServersSelfMountsRoute) URL(spr *ServerPoolRoutes) *url.URL {
+func (r ServersSelfMountsRoute) URL(spr *ServerPoolRoutes) (*url.URL, error) {
 	return spr.url(routeServersSelfMounts, "port", strconv.Itoa(int(r.Port)))
 }
-func (r ServersSelfMountsSelfRoute) URL(spr *ServerPoolRoutes) *url.URL {
+func (r ServersSelfMountsSelfRoute) URL(spr *ServerPoolRoutes) (*url.URL, error) {
 	return spr.url(routeServersSelfMountsSelf, "port", strconv.Itoa(int(r.Port)), "mount", r.ID)
 }
-func (r FileServersRoute) URL(spr *ServerPoolRoutes) *url.URL {
+func (r FileServersRoute) URL(spr *ServerPoolRoutes) (*url.URL, error) {
 	return spr.url(routeFileServers)
 }
 
@@ -92,11 +98,10 @@ type ServerPoolRoutes struct {
 	BaseURL *url.URL
 }
 
-func (spr *ServerPoolRoutes) url(name string, params ...string) *url.URL {
+func (spr *ServerPoolRoutes) url(name string, params ...string) (*url.URL, error) {
 	var urlPath string
 	if u, err := spr.r.Get(name).URLPath(params...); err != nil {
-		log.Print(err)
-		urlPath = ""
+		return nil, BadRouteError(err.Error())
 	} else {
 		urlPath = u.Path
 	}
@@ -105,10 +110,10 @@ func (spr *ServerPoolRoutes) url(name string, params ...string) *url.URL {
 		u = (*spr.BaseURL)
 	}
 	u.Path = urlPath
-	return &u
+	return &u, nil
 }
 
-func (spr *ServerPoolRoutes) RouteURL(r Route) *url.URL {
+func (spr *ServerPoolRoutes) RouteURL(r Route) (*url.URL, error) {
 	return r.URL(spr)
 }
 
@@ -190,7 +195,12 @@ func (sph *ServerPoolHandler) BaseURL() *url.URL {
 }
 
 func (sph *ServerPoolHandler) writeLocation(w http.ResponseWriter, route Route) {
-	w.Header().Set("Location", sph.routes.RouteURL(route).String())
+	u, err := sph.routes.RouteURL(route)
+	if err != nil {
+		sph.logErr(err)
+		return
+	}
+	w.Header().Set("Location", u.String())
 }
 
 func (sph *ServerPoolHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
