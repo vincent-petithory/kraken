@@ -326,6 +326,7 @@ func (sph *ServerPoolHandler) createServerWithRandomPort(w http.ResponseWriter, 
 	if ok := sph.ServerPool.StartSrv(srv); !ok {
 		sph.logErrSrv(srv, "unable to start server")
 		http.Error(w, fmt.Sprintf("unable to start server on port %d", srv.Port), http.StatusInternalServerError)
+		return
 	}
 	// Wait for the server to be started
 	<-srv.Started
@@ -362,6 +363,7 @@ func (sph *ServerPoolHandler) createServer(w http.ResponseWriter, r *http.Reques
 	if ok := sph.ServerPool.StartSrv(srv); !ok {
 		sph.logErrSrv(srv, "unable to start server")
 		http.Error(w, fmt.Sprintf("unable to start server on port %d", srv.Port), http.StatusInternalServerError)
+		return
 	}
 	// Wait for the server to be started
 	<-srv.Started
