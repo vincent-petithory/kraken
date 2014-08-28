@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -227,6 +228,32 @@ func (sph *ServerPoolHandler) writeLocation(w http.ResponseWriter, route Route) 
 	w.Header().Set("Location", u.String())
 }
 
+func (sph *ServerPoolHandler) serveJSON(w http.ResponseWriter, r *http.Request, data interface{}, code int) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	b, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		sph.logErr(err)
+		return
+	}
+
+	h := sha1.New()
+	h.Write(b)
+	h.Sum(nil)
+	etag := hex.EncodeToString(h.Sum(nil))[:18]
+	w.Header().Set("Etag", fmt.Sprintf(`"%s"`, etag))
+
+	if code == 0 {
+		code = http.StatusOK
+	}
+	w.WriteHeader(code)
+	if r.Method != "HEAD" {
+		if _, err := w.Write(b); err != nil {
+			sph.logErr(err)
+			return
+		}
+	}
+}
+
 func (sph *ServerPoolHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sph.h.ServeHTTP(w, r)
 }
@@ -284,14 +311,11 @@ func (sph *ServerPoolHandler) serverOr404(w http.ResponseWriter, r *http.Request
 }
 
 func (sph *ServerPoolHandler) getServers(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
 	srvs := make([]Server, 0, len(sph.ServerPool.Srvs))
 	for _, srv := range sph.ServerPool.Srvs {
 		srvs = append(srvs, *newServerDataFromServer(srv))
 	}
-	if err := json.NewEncoder(w).Encode(srvs); err != nil {
-		sph.logErr(err)
-	}
+	sph.serveJSON(w, r, srvs, http.StatusOK)
 }
 
 func (sph *ServerPoolHandler) getServer(w http.ResponseWriter, r *http.Request) {
@@ -299,10 +323,7 @@ func (sph *ServerPoolHandler) getServer(w http.ResponseWriter, r *http.Request) 
 	if srv == nil {
 		return
 	}
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
-		sph.logErr(err)
-	}
+	sph.serveJSON(w, r, newServerDataFromServer(srv), http.StatusOK)
 }
 
 type CreateServerRequest struct {
@@ -334,10 +355,7 @@ func (sph *ServerPoolHandler) createServerWithRandomPort(w http.ResponseWriter, 
 	sph.logfSrv(srv, "server available on http://%s", srv.Addr)
 
 	sph.writeLocation(w, ServersSelfRoute{srv.Port})
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
-		sph.logErr(err)
-	}
+	sph.serveJSON(w, r, newServerDataFromServer(srv), http.StatusCreated)
 }
 
 func (sph *ServerPoolHandler) createServer(w http.ResponseWriter, r *http.Request) {
@@ -369,10 +387,7 @@ func (sph *ServerPoolHandler) createServer(w http.ResponseWriter, r *http.Reques
 	<-srv.Started
 	sph.logf("created server %q", srv.Addr)
 	sph.logfSrv(srv, "server available on http://%s", srv.Addr)
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(newServerDataFromServer(srv)); err != nil {
-		sph.logErr(err)
-	}
+	sph.serveJSON(w, r, newServerDataFromServer(srv), http.StatusOK)
 }
 
 func (sph *ServerPoolHandler) removeServers(w http.ResponseWriter, r *http.Request) {
@@ -435,10 +450,7 @@ func (sph *ServerPoolHandler) getServerMounts(w http.ResponseWriter, r *http.Req
 			Target: mountTarget,
 		})
 	}
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(mounts); err != nil {
-		sph.logErr(err)
-	}
+	sph.serveJSON(w, r, mounts, http.StatusOK)
 }
 
 func (sph *ServerPoolHandler) removeServerMounts(w http.ResponseWriter, r *http.Request) {
@@ -479,10 +491,7 @@ func (sph *ServerPoolHandler) getServerMount(w http.ResponseWriter, r *http.Requ
 		Source: srv.MountMap.GetSource(mountTarget),
 		Target: mountTarget,
 	}
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(mount); err != nil {
-		sph.logErr(err)
-	}
+	sph.serveJSON(w, r, mount, http.StatusOK)
 }
 
 type CreateServerMountRequest struct {
@@ -522,10 +531,7 @@ func (sph *ServerPoolHandler) createServerMount(w http.ResponseWriter, r *http.R
 	}
 
 	sph.writeLocation(w, ServersSelfMountsSelfRoute{Port: srv.Port, ID: mount.ID})
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(mount); err != nil {
-		sph.logErr(err)
-	}
+	sph.serveJSON(w, r, mount, http.StatusCreated)
 }
 
 func (sph *ServerPoolHandler) removeServerMount(w http.ResponseWriter, r *http.Request) {
@@ -554,10 +560,7 @@ func (sph *ServerPoolHandler) removeServerMount(w http.ResponseWriter, r *http.R
 type FileServerTypes []string
 
 func (sph *ServerPoolHandler) getFileServers(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(FileServerTypes(sph.ServerPool.Fsf.Types())); err != nil {
-		sph.logErr(err)
-	}
+	sph.serveJSON(w, r, FileServerTypes(sph.ServerPool.Fsf.Types()), http.StatusOK)
 }
 
 type dynamicWriter struct {
