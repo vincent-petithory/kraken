@@ -145,12 +145,14 @@ func NewMountMap(fsf fileserver.Factory) *MountMap {
 }
 
 type Server struct {
-	MountMap *MountMap
-	Addr     string
-	Port     uint16
-	Started  chan struct{}
-	srv      *http.Server
-	ln       net.Listener
+	MountMap       *MountMap
+	HandlerWrapper func(http.Handler) http.Handler
+	Addr           string
+	Port           uint16
+	Started        chan struct{}
+	Running        bool
+	srv            *http.Server
+	ln             net.Listener
 }
 
 func NewServer(addr string, fsf fileserver.Factory) *Server {
@@ -161,13 +163,13 @@ func NewServer(addr string, fsf fileserver.Factory) *Server {
 	}
 }
 
-func (ds *Server) ListenAndServe() error {
-	ln, err := net.Listen("tcp", ds.Addr)
+func (s *Server) ListenAndServe() error {
+	ln, err := net.Listen("tcp", s.Addr)
 	if err != nil {
 		return err
 	}
-	ds.Addr = ln.Addr().String()
-	_, sport, err := net.SplitHostPort(ds.Addr)
+	s.Addr = ln.Addr().String()
+	_, sport, err := net.SplitHostPort(s.Addr)
 	if err != nil {
 		return err
 	}
@@ -175,23 +177,31 @@ func (ds *Server) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
-	ds.Port = uint16(port)
-	ds.srv = &http.Server{
-		Handler: ds.MountMap,
+	s.Port = uint16(port)
+
+	var h http.Handler
+	if s.HandlerWrapper != nil {
+		h = s.HandlerWrapper(s.MountMap)
+	} else {
+		h = s.MountMap
 	}
-	ds.ln = &connsCloserListener{
+	s.srv = &http.Server{
+		Handler: h,
+	}
+	s.ln = &connsCloserListener{
 		Listener: tcpKeepAliveListener{ln.(*net.TCPListener)},
 	}
 
-	close(ds.Started)
-	if err := ds.srv.Serve(ds.ln); err != nil {
+	close(s.Started)
+	s.Running = true
+	if err := s.srv.Serve(s.ln); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (ds *Server) Close() error {
-	return ds.ln.Close()
+func (s *Server) Close() error {
+	return s.ln.Close()
 }
 
 type connsCloserListener struct {
@@ -236,15 +246,15 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 
 type ServerPool struct {
 	Srvs  []*Server
-	SrvCh chan *Server
 	Fsf   fileserver.Factory
+	srvCh chan *Server
 }
 
 func NewServerPool(fsf fileserver.Factory) *ServerPool {
 	return &ServerPool{
 		Srvs:  make([]*Server, 0),
-		SrvCh: make(chan *Server),
 		Fsf:   fsf,
+		srvCh: make(chan *Server),
 	}
 }
 
@@ -252,11 +262,9 @@ func (sp *ServerPool) Add(addr string) (*Server, error) {
 	if err := checkAddr(addr); err != nil {
 		return nil, err
 	}
-	ds := NewServer(addr, sp.Fsf)
-	sp.SrvCh <- ds
-	<-ds.Started
-	sp.Srvs = append(sp.Srvs, ds)
-	return ds, nil
+	s := NewServer(addr, sp.Fsf)
+	sp.Srvs = append(sp.Srvs, s)
+	return s, nil
 }
 
 func (sp *ServerPool) Get(port uint16) *Server {
@@ -284,17 +292,33 @@ func (sp *ServerPool) Remove(port uint16) (bool, error) {
 	return false, nil
 }
 
+func (sp *ServerPool) StartSrv(s *Server) bool {
+	// check the server is registered
+	if s.Running {
+		return false
+	}
+	for _, srv := range sp.Srvs {
+		if srv == s {
+			sp.srvCh <- s
+			return true
+		}
+	}
+	return false
+}
+
 func (sp *ServerPool) ListenAndRun() {
 	for _, srv := range sp.Srvs {
-		go func(ds *Server) {
-			// TODO remove server from list?
-			log.Print(ds.ListenAndServe())
+		go func(s *Server) {
+			if err := s.ListenAndServe(); err != nil {
+				log.Printf("server %s stopped with error: %v", s.Addr, err)
+			}
 		}(srv)
 	}
-	for srv := range sp.SrvCh {
-		go func(ds *Server) {
-			// TODO remove server from list?
-			log.Print(ds.ListenAndServe())
+	for srv := range sp.srvCh {
+		go func(s *Server) {
+			if err := s.ListenAndServe(); err != nil {
+				log.Printf("server %s stopped with error: %v", s.Addr, err)
+			}
 		}(srv)
 	}
 }
