@@ -245,6 +245,12 @@ func (sph *ServerPoolHandler) serveJSON(w http.ResponseWriter, r *http.Request, 
 	if code == 0 {
 		code = http.StatusOK
 	}
+
+	if code == http.StatusOK {
+		if ok := handleEtag(w, r); ok {
+			return
+		}
+	}
 	w.WriteHeader(code)
 	if r.Method != "HEAD" {
 		if _, err := w.Write(b); err != nil {
@@ -252,6 +258,30 @@ func (sph *ServerPoolHandler) serveJSON(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 	}
+}
+
+// handlerEtag compares Etag and If-None-Match headers.
+// Implementation is borrowed from net/http.
+func handleEtag(w http.ResponseWriter, r *http.Request) (ok bool) {
+	if r.Method != "GET" && r.Method != "HEAD" {
+		return
+	}
+	etag := w.Header().Get("Etag")
+	if etag == "" {
+		return
+	}
+	inm := r.Header.Get("If-None-Match")
+	if inm == "" {
+		return
+	}
+
+	if inm == etag || inm == "*" {
+		w.Header().Del("Content-Type")
+		w.Header().Del("Content-Length")
+		w.WriteHeader(http.StatusNotModified)
+		ok = true
+	}
+	return
 }
 
 func (sph *ServerPoolHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
