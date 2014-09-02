@@ -30,23 +30,23 @@ func (e *APIError) Error() string {
 	return e.Msg
 }
 
-// JSONRewriter rewrites responses which are 4xx or 5xx
+// jsonRewriter rewrites responses which are 4xx or 5xx
 // into a specific error type a JSON REST API could use for its endpoints.
-type JSONRewriter struct {
+type jsonRewriter struct {
 	sph *ServerPoolHandler
 }
 
-func (jr JSONRewriter) RewriteIf(header http.Header, status int, r *http.Request) bool {
+func (jr jsonRewriter) RewriteIf(header http.Header, status int, r *http.Request) bool {
 	return status >= 400 /* 4xx and 5xx */ &&
 		!strings.HasPrefix(header.Get("Content-Type"), "application/json") &&
 		(r.Method != "HEAD" && r.Method != "OPTIONS")
 }
 
-func (jr JSONRewriter) RewriteHeader(header http.Header, status int) {
+func (jr jsonRewriter) RewriteHeader(header http.Header, status int) {
 	header.Set("Content-Type", "application/json; charset=utf-8")
 }
 
-func (jr JSONRewriter) Rewrite(w io.Writer, b []byte, status int) {
+func (jr jsonRewriter) Rewrite(w io.Writer, b []byte, status int) {
 	aerr := APIError{Msg: string(b)}
 	if status >= 400 && status < 500 {
 		aerr.Type = apiErrTypeBadRequest
@@ -63,7 +63,7 @@ func (jr JSONRewriter) Rewrite(w io.Writer, b []byte, status int) {
 
 func jsonResponseRewriteHandler(sph *ServerPoolHandler, h http.Handler) http.Handler {
 	return krakenhandlers.ResponseRewriteHandler(
-		JSONRewriter{sph},
+		jsonRewriter{sph},
 		h,
 	)
 }
