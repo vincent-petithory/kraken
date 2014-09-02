@@ -82,7 +82,7 @@ func main() {
 	srv := &http.Server{
 		Handler: sph,
 	}
-	log.Printf("[admin] Listening on %s", ln.Addr())
-	log.Printf("[admin] Available on %s", sph.BaseURL())
+	log.Printf("Listening on %s", ln.Addr())
+	log.Printf("Available on %s", sph.BaseURL())
 	log.Fatal(srv.Serve(ln))
 }
