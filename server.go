@@ -309,16 +309,14 @@ func (sp *ServerPool) StartSrv(s *Server) bool {
 func (sp *ServerPool) ListenAndRun() {
 	for _, srv := range sp.Srvs {
 		go func(s *Server) {
-			if err := s.ListenAndServe(); err != nil {
-				log.Printf("server %s stopped with error: %v", s.Addr, err)
-			}
+			// Ignore errClosing errors. See https://code.google.com/p/go/issues/detail?id=4373
+			s.ListenAndServe()
 		}(srv)
 	}
 	for srv := range sp.srvCh {
 		go func(s *Server) {
-			if err := s.ListenAndServe(); err != nil {
-				log.Printf("server %s stopped with error: %v", s.Addr, err)
-			}
+			// Ignore errClosing errors. See https://code.google.com/p/go/issues/detail?id=4373
+			s.ListenAndServe()
 		}(srv)
 	}
 }
