@@ -69,26 +69,6 @@ func (r FileServersRoute) URL(spr *ServerPoolRoutes) (*url.URL, error) {
 	return spr.url(routeFileServers)
 }
 
-type APIErrorType string
-
-const (
-	apiErrTypeBadRequest  APIErrorType = "bad_request_error"
-	apiErrTypeAPIInternal              = "api_internal_error"
-)
-
-type APIError struct {
-	Type APIErrorType `json:"type"`
-	Msg  string       `json:"msg"`
-}
-
-func (e *APIError) String() string {
-	return fmt.Sprintf("%s: %s", e.Type, e.Msg)
-}
-
-func (e *APIError) Error() string {
-	return e.Msg
-}
-
 type ServerPoolRoutes struct {
 	r       *mux.Router
 	BaseURL *url.URL
@@ -141,6 +121,9 @@ func NewServerPoolHandler(serverPool *kraken.ServerPool) *ServerPoolHandler {
 			return handlers.ContentTypeHandler(h, "application/json")
 		},
 		handlers.HTTPMethodOverrideHandler,
+		func(h http.Handler) http.Handler {
+			return jsonResponseRewriteHandler(&sph, h)
+		},
 		handlers.CompressHandler,
 	)
 	sph.routes.r.Get(routeServers).Handler(chain.Then(handlers.MethodHandler{
