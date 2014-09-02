@@ -240,7 +240,7 @@ func (sph *ServerPoolHandler) serveJSON(w http.ResponseWriter, r *http.Request, 
 	h.Write(b)
 	h.Sum(nil)
 	etag := hex.EncodeToString(h.Sum(nil))[:18]
-	w.Header().Set("Etag", fmt.Sprintf(`"%s"`, etag))
+	w.Header().Set("Etag", strconv.Quote(etag))
 
 	if code == 0 {
 		code = http.StatusOK
