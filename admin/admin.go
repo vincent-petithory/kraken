@@ -343,6 +343,25 @@ type CreateServerRequest struct {
 	BindAddress string `json:"bind_address"`
 }
 
+func (sph *ServerPoolHandler) addAndStartSrv(w http.ResponseWriter, r *http.Request, bindAddress string, port string) (*kraken.Server, bool) {
+	addr := net.JoinHostPort(bindAddress, port)
+	srv, err := sph.ServerPool.Add(addr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return nil, false
+	}
+	if ok := sph.ServerPool.StartSrv(srv); !ok {
+		sph.logErrSrv(srv, "unable to start server")
+		http.Error(w, fmt.Sprintf("unable to start server on port %d", srv.Port), http.StatusInternalServerError)
+		return nil, false
+	}
+	// Wait for the server to be started
+	<-srv.Started
+	sph.logf("created server %q", srv.Addr)
+	sph.logfSrv(srv, "server available on http://%s", srv.Addr)
+	return srv, true
+}
+
 func (sph *ServerPoolHandler) createServerWithRandomPort(w http.ResponseWriter, r *http.Request) {
 	var req CreateServerRequest
 	defer r.Body.Close()
@@ -351,21 +370,10 @@ func (sph *ServerPoolHandler) createServerWithRandomPort(w http.ResponseWriter, 
 		return
 	}
 
-	addr := net.JoinHostPort(req.BindAddress, "0")
-	srv, err := sph.ServerPool.Add(addr)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	srv, ok := sph.addAndStartSrv(w, r, req.BindAddress, "0")
+	if !ok {
 		return
 	}
-	if ok := sph.ServerPool.StartSrv(srv); !ok {
-		sph.logErrSrv(srv, "unable to start server")
-		http.Error(w, fmt.Sprintf("unable to start server on port %d", srv.Port), http.StatusInternalServerError)
-		return
-	}
-	// Wait for the server to be started
-	<-srv.Started
-	sph.logf("created server %q", srv.Addr)
-	sph.logfSrv(srv, "server available on http://%s", srv.Addr)
 
 	sph.writeLocation(w, ServersSelfRoute{srv.Port})
 	sph.serveJSON(w, r, newServerDataFromServer(srv), http.StatusCreated)
@@ -385,21 +393,11 @@ func (sph *ServerPoolHandler) createServer(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	addr := net.JoinHostPort(req.BindAddress, strconv.Itoa(port))
-	srv, err := sph.ServerPool.Add(addr)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	srv, ok := sph.addAndStartSrv(w, r, req.BindAddress, strconv.Itoa(port))
+	if !ok {
 		return
 	}
-	if ok := sph.ServerPool.StartSrv(srv); !ok {
-		sph.logErrSrv(srv, "unable to start server")
-		http.Error(w, fmt.Sprintf("unable to start server on port %d", srv.Port), http.StatusInternalServerError)
-		return
-	}
-	// Wait for the server to be started
-	<-srv.Started
-	sph.logf("created server %q", srv.Addr)
-	sph.logfSrv(srv, "server available on http://%s", srv.Addr)
+
 	sph.serveJSON(w, r, newServerDataFromServer(srv), http.StatusOK)
 }
 
