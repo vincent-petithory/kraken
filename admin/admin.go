@@ -149,17 +149,16 @@ func NewServerPoolHandler(serverPool *kraken.ServerPool) *ServerPoolHandler {
 		"GET": http.HandlerFunc(sph.getFileServers),
 	})
 
-	dw := &dynamicWriter{func(b []byte) (int, error) {
-		if sph.Log != nil {
-			sph.Log.Printf("%s", b)
-		} else {
-			log.Printf("%s", b)
-		}
-		return len(b), nil
-	}}
-
 	routerChain := alice.New(
 		func(h http.Handler) http.Handler {
+			dw := &dynamicWriter{func(b []byte) (int, error) {
+				if sph.Log != nil {
+					sph.Log.Printf("%s", b)
+				} else {
+					log.Printf("%s", b)
+				}
+				return len(b), nil
+			}}
 			return handlers.CombinedLoggingHandler(dw, h)
 		},
 	)
@@ -350,6 +349,19 @@ func (sph *ServerPoolHandler) addAndStartSrv(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return nil, false
 	}
+
+	// Add middlewares to the server
+	srvChain := alice.New(
+		func(h http.Handler) http.Handler {
+			dw := &dynamicWriter{func(b []byte) (int, error) {
+				sph.logfSrv(srv, "%s", b)
+				return len(b), nil
+			}}
+			return handlers.CombinedLoggingHandler(dw, h)
+		},
+	)
+	srv.HandlerWrapper = srvChain.Then
+
 	if ok := sph.ServerPool.StartSrv(srv); !ok {
 		sph.logErrSrv(srv, "unable to start server")
 		http.Error(w, fmt.Sprintf("unable to start server on port %d", srv.Port), http.StatusInternalServerError)
