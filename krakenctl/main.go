@@ -195,7 +195,7 @@ func serverAdd(client *client.Client, flags *flagSet, cmd *cobra.Command, args [
 }
 
 func serverRm(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
-	if len(args) == 0 || len(args) > 1 {
+	if len(args) != 1 {
 		cmd.Usage()
 		return
 	}
@@ -232,7 +232,7 @@ func fileServerList(client *client.Client, flags *flagSet, cmd *cobra.Command, a
 }
 
 func mountList(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
-	if len(args) == 0 || len(args) > 1 {
+	if len(args) != 1 {
 		cmd.Usage()
 		return
 	}
@@ -286,7 +286,7 @@ func mountAdd(client *client.Client, flags *flagSet, cmd *cobra.Command, args []
 }
 
 func mountRm(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
-	if len(args) == 0 || len(args) > 2 {
+	if len(args) != 2 {
 		cmd.Usage()
 		return
 	}
