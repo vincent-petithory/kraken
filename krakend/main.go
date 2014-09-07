@@ -12,6 +12,7 @@ import (
 	"github.com/vincent-petithory/kraken"
 	"github.com/vincent-petithory/kraken/admin"
 	"github.com/vincent-petithory/kraken/fileserver"
+	"github.com/vincent-petithory/kraken/fileserver/beachplug"
 )
 
 const (
@@ -51,6 +52,7 @@ func main() {
 	adminAddr := defaultAddr
 	// Register fileservers
 	fsf := make(fileserver.Factory)
+	fsf.Register("beachplug", beachplug.Server)
 	// Init server pool, run existing servers and listen for new ones
 	serverPool := kraken.NewServerPool(fsf)
 	go serverPool.ListenAndRun()

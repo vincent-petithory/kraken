@@ -105,7 +105,7 @@ By default, SOURCE is mounted on /$(basename SOURCE)`,
 		Run: clientCmd(c, flags, mountAdd),
 	}
 	mountAddCmd.Flags().StringVarP(&flags.MountTarget, "target", "t", "", "Alternate mount target; it must start with / and not end with /")
-	mountAddCmd.Flags().StringVarP(&flags.FileServerType, "fs", "f", "default", "File server type to use for this mount point")
+	mountAddCmd.Flags().StringVarP(&flags.FileServerType, "fs", "f", "beachplug", "File server type to use for this mount point; if empty, a fallback is used (net/http.FileServer)")
 	mountAddCmd.Flags().StringVarP(&flags.FileServerParams, "fsp", "p", "{}", "File server params; they must be specified as a valid JSON object.")
 
 	mountRmCmd := &cobra.Command{
