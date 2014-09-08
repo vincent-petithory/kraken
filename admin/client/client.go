@@ -280,17 +280,20 @@ func (c *Client) ListenEvents(recvEvents chan *admin.Event, events ...string) er
 	if len(events) > 0 {
 		var eventCodes []string
 		for _, evt := range events {
-			if evt == "server" {
+			switch evt {
+			case "server":
 				eventCodes = append(eventCodes, []string{
 					strconv.Itoa(int(admin.EventTypeServerAdd)),
 					strconv.Itoa(int(admin.EventTypeServerRemove)),
 				}...)
-			} else if evt == "mount" {
+			case "mount":
 				eventCodes = append(eventCodes, []string{
 					strconv.Itoa(int(admin.EventTypeMountAdd)),
 					strconv.Itoa(int(admin.EventTypeMountRemove)),
 					strconv.Itoa(int(admin.EventTypeMountUpdate)),
 				}...)
+			default:
+				return fmt.Errorf("unknown event %q", evt)
 			}
 		}
 		v := url.Values{}

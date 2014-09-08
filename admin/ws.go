@@ -3,11 +3,11 @@ package admin
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"strconv"
 )
 
 const EventsQueryKey = "e"

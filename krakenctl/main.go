@@ -321,19 +321,19 @@ func listenEvents(client *client.Client, flags *flagSet, cmd *cobra.Command, arg
 		switch evt.Type {
 		case admin.EventTypeServerAdd:
 			se := evt.Resource.(*admin.ServerEvent)
-			fmt.Printf("server added on http://%s\n", se.Server.BindAddress)
+			fmt.Printf("server added on http://%s:%d\n", se.Server.BindAddress, se.Server.Port)
 		case admin.EventTypeServerRemove:
 			se := evt.Resource.(*admin.ServerEvent)
-			fmt.Printf("server removed on http://%s\n", se.Server.BindAddress)
+			fmt.Printf("server removed on http://%s:%d\n", se.Server.BindAddress, se.Server.Port)
 		case admin.EventTypeMountAdd:
 			me := evt.Resource.(*admin.MountEvent)
-			fmt.Printf("mount point %s added: %q -> http://%s%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Mount.Target)
+			fmt.Printf("mount point %s added: %q -> http://%s:%d%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Server.Port, me.Mount.Target)
 		case admin.EventTypeMountUpdate:
 			me := evt.Resource.(*admin.MountEvent)
-			fmt.Printf("mount point %s updated: %q -> http://%s%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Mount.Target)
+			fmt.Printf("mount point %s updated: %q -> http://%s:%d%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Server.Port, me.Mount.Target)
 		case admin.EventTypeMountRemove:
 			me := evt.Resource.(*admin.MountEvent)
-			fmt.Printf("mount point %s removed: %q X http://%s%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Mount.Target)
+			fmt.Printf("mount point %s removed: %q X http://%s:%d%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Server.Port, me.Mount.Target)
 		}
 	}
 }
