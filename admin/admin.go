@@ -26,6 +26,7 @@ const (
 	routeServersSelfMounts     = "servers.self.mounts"
 	routeServersSelfMountsSelf = "servers.self.mounts.self"
 	routeFileServers           = "file-servers"
+	routeEvents                = "events"
 )
 
 type Route interface {
@@ -45,6 +46,7 @@ type (
 		ID   string
 	}
 	FileServersRoute struct{}
+	EventsRoute      struct{}
 )
 
 type BadRouteError string
@@ -67,6 +69,9 @@ func (r ServersSelfMountsSelfRoute) URL(spr *ServerPoolRoutes) (*url.URL, error)
 }
 func (r FileServersRoute) URL(spr *ServerPoolRoutes) (*url.URL, error) {
 	return spr.url(routeFileServers)
+}
+func (r EventsRoute) URL(spr *ServerPoolRoutes) (*url.URL, error) {
+	return spr.url(routeEvents)
 }
 
 type ServerPoolRoutes struct {
@@ -101,6 +106,7 @@ func NewServerPoolRoutes() *ServerPoolRoutes {
 	apiRouter.Path("/servers/{port:[0-9]{1,5}}/mounts").Name(routeServersSelfMounts)
 	apiRouter.Path("/servers/{port:[0-9]{1,5}}/mounts/{mount}").Name(routeServersSelfMountsSelf)
 	apiRouter.Path("/fileservers").Name(routeFileServers)
+	apiRouter.Path("/events").Name(routeEvents)
 	return &ServerPoolRoutes{r: r}
 }
 
@@ -109,12 +115,20 @@ type ServerPoolHandler struct {
 	Log    *log.Logger
 	h      http.Handler
 	routes *ServerPoolRoutes
+	events *serverPoolEventsHandler
 }
 
 func NewServerPoolHandler(serverPool *kraken.ServerPool) *ServerPoolHandler {
 	sph := ServerPoolHandler{
 		ServerPool: serverPool,
 		routes:     NewServerPoolRoutes(),
+		events: &serverPoolEventsHandler{
+			conns:   make(map[*conn]bool),
+			events:  make(chan string),
+			sub:     make(chan *conn),
+			unsub:   make(chan *conn),
+			eventCh: make(chan *Event),
+		},
 	}
 	chain := alice.New(
 		func(h http.Handler) http.Handler {
@@ -148,6 +162,7 @@ func NewServerPoolHandler(serverPool *kraken.ServerPool) *ServerPoolHandler {
 	sph.routes.r.Get(routeFileServers).Handler(handlers.MethodHandler{
 		"GET": http.HandlerFunc(sph.getFileServers),
 	})
+	sph.routes.r.Get(routeEvents).Handler(sph.events)
 
 	routerChain := alice.New(
 		func(h http.Handler) http.Handler {
@@ -163,6 +178,8 @@ func NewServerPoolHandler(serverPool *kraken.ServerPool) *ServerPoolHandler {
 		},
 	)
 	sph.h = routerChain.Then(sph.routes.r)
+
+	go sph.events.Broadcast()
 	return &sph
 }
 
@@ -371,6 +388,7 @@ func (sph *ServerPoolHandler) addAndStartSrv(w http.ResponseWriter, r *http.Requ
 	<-srv.Started
 	sph.logf("created server %q", srv.Addr)
 	sph.logfSrv(srv, "server available on http://%s", srv.Addr)
+	sph.events.Send(Event{EventTypeServerAdd, ServerEvent{*newServerDataFromServer(srv)}})
 	return srv, true
 }
 
@@ -428,6 +446,7 @@ func (sph *ServerPoolHandler) removeServers(w http.ResponseWriter, r *http.Reque
 		} else {
 			sph.logfSrv(srv, "server shut down")
 		}
+		sph.events.Send(Event{EventTypeServerRemove, ServerEvent{*newServerDataFromServer(srv)}})
 	}
 	if len(errs) > 0 {
 		var bufMsg bytes.Buffer
@@ -456,6 +475,7 @@ func (sph *ServerPoolHandler) removeServer(w http.ResponseWriter, r *http.Reques
 	} else {
 		sph.logfSrv(srv, "server shut down")
 	}
+	sph.events.Send(Event{EventTypeServerRemove, ServerEvent{*newServerDataFromServer(srv)}})
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -483,8 +503,14 @@ func (sph *ServerPoolHandler) removeServerMounts(w http.ResponseWriter, r *http.
 	}
 	mountTargets := srv.MountMap.Targets()
 	for _, mountTarget := range mountTargets {
+		mount := Mount{
+			ID:     mountID(mountTarget),
+			Source: srv.MountMap.GetSource(mountTarget),
+			Target: mountTarget,
+		}
 		if ok := srv.MountMap.DeleteTarget(mountTarget); ok {
 			sph.logfSrv(srv, "removed mount point %s", mountID(mountTarget))
+			sph.events.Send(Event{EventTypeMountRemove, MountEvent{*newServerDataFromServer(srv), mount}})
 		}
 	}
 	w.WriteHeader(http.StatusOK)
@@ -549,8 +575,10 @@ func (sph *ServerPoolHandler) createServerMount(w http.ResponseWriter, r *http.R
 	}
 	if exists {
 		sph.logfSrv(srv, "updated mount point %s: mount %s on http://%s%s", mount.ID, mount.Source, srv.Addr, mount.Target)
+		sph.events.Send(Event{EventTypeMountUpdate, MountEvent{*newServerDataFromServer(srv), mount}})
 	} else {
 		sph.logfSrv(srv, "created mount point %s: mount %s on http://%s%s", mount.ID, mount.Source, srv.Addr, mount.Target)
+		sph.events.Send(Event{EventTypeMountAdd, MountEvent{*newServerDataFromServer(srv), mount}})
 	}
 
 	sph.writeLocation(w, ServersSelfMountsSelfRoute{Port: srv.Port, ID: mount.ID})
@@ -570,12 +598,18 @@ func (sph *ServerPoolHandler) removeServerMount(w http.ResponseWriter, r *http.R
 			break
 		}
 	}
+	mount := Mount{
+		ID:     reqMountID,
+		Source: srv.MountMap.GetSource(mountTarget),
+		Target: mountTarget,
+	}
 	ok := srv.MountMap.DeleteTarget(mountTarget)
 	if !ok {
 		http.Error(w, fmt.Sprintf("server %d has no mount target %q", srv.Port, mountTarget), http.StatusNotFound)
 		return
 	}
 	sph.logfSrv(srv, "removed mount point %s", reqMountID)
+	sph.events.Send(Event{EventTypeMountRemove, MountEvent{*newServerDataFromServer(srv), mount}})
 
 	w.WriteHeader(http.StatusOK)
 }

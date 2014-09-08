@@ -8,13 +8,18 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
+	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/vincent-petithory/kraken/admin"
 )
 
 // Client defines methods to access the Kraken RESTful API.
 type Client struct {
 	C      http.Client // HTTP Client
+	WSC    websocket.Dialer
 	url    *url.URL
 	routes *admin.ServerPoolRoutes
 }
@@ -22,7 +27,11 @@ type Client struct {
 // New returns a Client which will hit the API at apiURL.
 func New(apiURL *url.URL) *Client {
 	return &Client{
-		C:      http.Client{},
+		C: http.Client{},
+		WSC: websocket.Dialer{
+			ReadBufferSize:  1 << 10,
+			WriteBufferSize: 1 << 8,
+		},
 		url:    apiURL,
 		routes: admin.NewServerPoolRoutes(),
 	}
@@ -258,5 +267,60 @@ func (c *Client) RemoveMount(port uint16, mountID string) error {
 		return err
 	}
 	return nil
+}
 
+func (c *Client) ListenEvents(recvEvents chan *admin.Event, events ...string) error {
+	u := *c.url
+	ru, err := admin.EventsRoute{}.URL(c.routes)
+	if err != nil {
+		return err
+	}
+	u.Path = ru.Path
+	u.Scheme = "ws"
+	if len(events) > 0 {
+		var eventCodes []string
+		for _, evt := range events {
+			if evt == "server" {
+				eventCodes = append(eventCodes, []string{
+					strconv.Itoa(int(admin.EventTypeServerAdd)),
+					strconv.Itoa(int(admin.EventTypeServerRemove)),
+				}...)
+			} else if evt == "mount" {
+				eventCodes = append(eventCodes, []string{
+					strconv.Itoa(int(admin.EventTypeMountAdd)),
+					strconv.Itoa(int(admin.EventTypeMountRemove)),
+					strconv.Itoa(int(admin.EventTypeMountUpdate)),
+				}...)
+			}
+		}
+		v := url.Values{}
+		v.Set(admin.EventsQueryKey, strings.Join(eventCodes, ","))
+		u.RawQuery = v.Encode()
+	}
+
+	conn, _, err := c.WSC.Dial(u.String(), nil)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	conn.SetPingHandler(func(string) error {
+		conn.WriteControl(websocket.PongMessage, []byte{}, time.Now().Add(time.Second*10))
+		return nil
+	})
+	for {
+		mt, p, err := conn.ReadMessage()
+		if err != nil {
+			return err
+		}
+		switch mt {
+		case websocket.CloseMessage:
+			return nil
+		case websocket.TextMessage:
+			var evt admin.Event
+			if err := json.Unmarshal(p, &evt); err != nil {
+				return err
+			}
+			recvEvents <- &evt
+		}
+	}
 }

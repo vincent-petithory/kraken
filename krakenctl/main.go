@@ -122,6 +122,13 @@ By default, SOURCE is mounted on /$(basename SOURCE)`,
 		Run:   clientCmd(c, flags, fileServerList),
 	}
 
+	eventsCmd := &cobra.Command{
+		Use:   "events [EVENT]...",
+		Short: "Listen for events from kraken",
+		Long:  "Listen for the specified events from kraken. If no event is provided, all events are listened for. Otherwise, only the specified events will be listened for. EVENTs can be server or mount",
+		Run:   clientCmd(c, flags, listenEvents),
+	}
+
 	rootCmd := &cobra.Command{
 		Use: "krakenctl",
 	}
@@ -137,6 +144,8 @@ By default, SOURCE is mounted on /$(basename SOURCE)`,
 		mountRmCmd,
 		// fileserver commands
 		fileServersGetCmd,
+		// events
+		eventsCmd,
 	)
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
@@ -297,5 +306,34 @@ func mountRm(client *client.Client, flags *flagSet, cmd *cobra.Command, args []s
 	mountID := args[1]
 	if err := client.RemoveMount(uint16(port), mountID); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func listenEvents(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
+	events := args
+	eventsCh := make(chan *admin.Event)
+	go func() {
+		if err := client.ListenEvents(eventsCh, events...); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	for evt := range eventsCh {
+		switch evt.Type {
+		case admin.EventTypeServerAdd:
+			se := evt.Resource.(*admin.ServerEvent)
+			fmt.Printf("server added on http://%s\n", se.Server.BindAddress)
+		case admin.EventTypeServerRemove:
+			se := evt.Resource.(*admin.ServerEvent)
+			fmt.Printf("server removed on http://%s\n", se.Server.BindAddress)
+		case admin.EventTypeMountAdd:
+			me := evt.Resource.(*admin.MountEvent)
+			fmt.Printf("mount point %s added: %q -> http://%s%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Mount.Target)
+		case admin.EventTypeMountUpdate:
+			me := evt.Resource.(*admin.MountEvent)
+			fmt.Printf("mount point %s updated: %q -> http://%s%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Mount.Target)
+		case admin.EventTypeMountRemove:
+			me := evt.Resource.(*admin.MountEvent)
+			fmt.Printf("mount point %s removed: %q X http://%s%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Mount.Target)
+		}
 	}
 }
