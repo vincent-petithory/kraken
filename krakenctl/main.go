@@ -334,6 +334,9 @@ func listenEvents(client *client.Client, flags *flagSet, cmd *cobra.Command, arg
 		case admin.EventTypeMountRemove:
 			me := evt.Resource.(*admin.MountEvent)
 			fmt.Printf("mount point %s removed: %q X http://%s:%d%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Server.Port, me.Mount.Target)
+		case admin.EventTypeFileServe:
+			fse := evt.Resource.(*admin.FileServeEvent)
+			fmt.Printf("file served on http://%s:%d - %d - %s\n", fse.Server.BindAddress, fse.Server.Port, fse.Code, fse.Path)
 		}
 	}
 }

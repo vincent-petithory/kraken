@@ -292,6 +292,8 @@ func (c *Client) ListenEvents(recvEvents chan *admin.Event, events ...string) er
 					strconv.Itoa(int(admin.EventTypeMountRemove)),
 					strconv.Itoa(int(admin.EventTypeMountUpdate)),
 				}...)
+			case "fileserve":
+				eventCodes = append(eventCodes, strconv.Itoa(int(admin.EventTypeFileServe)))
 			default:
 				return fmt.Errorf("unknown event %q", evt)
 			}

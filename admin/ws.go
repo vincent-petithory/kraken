@@ -43,6 +43,8 @@ func (e *Event) UnmarshalJSON(b []byte) error {
 		fallthrough
 	case EventTypeMountRemove:
 		res = new(MountEvent)
+	case EventTypeFileServe:
+		res = new(FileServeEvent)
 	}
 	if err := json.Unmarshal(evt.Resource, res); err != nil {
 		return err
@@ -60,6 +62,7 @@ const (
 	EventTypeMountAdd
 	EventTypeMountUpdate
 	EventTypeMountRemove
+	EventTypeFileServe
 )
 
 type (
@@ -69,6 +72,11 @@ type (
 	MountEvent struct {
 		Server Server `json:"server"`
 		Mount  Mount  `json:"mount"`
+	}
+	FileServeEvent struct {
+		Server Server `json:"server"`
+		Path   string `json:"path"`
+		Code   int    `json:"code"`
 	}
 )
 
@@ -149,6 +157,7 @@ func (s *serverPoolEventsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 			EventTypeMountAdd:     true,
 			EventTypeMountRemove:  true,
 			EventTypeMountUpdate:  true,
+			EventTypeFileServe:    true,
 		}
 	}
 

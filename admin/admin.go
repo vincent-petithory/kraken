@@ -376,6 +376,13 @@ func (sph *ServerPoolHandler) addAndStartSrv(w http.ResponseWriter, r *http.Requ
 			}}
 			return handlers.CombinedLoggingHandler(dw, h)
 		},
+		func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				rsl := &responseStatusLogger{ResponseWriter: w}
+				h.ServeHTTP(rsl, r)
+				sph.events.Send(Event{EventTypeFileServe, FileServeEvent{*newServerDataFromServer(srv), r.URL.Path, rsl.Status}})
+			})
+		},
 	)
 	srv.HandlerWrapper = srvChain.Then
 
@@ -629,4 +636,21 @@ func (dw *dynamicWriter) Write(b []byte) (int, error) {
 		return dw.wFn(b)
 	}
 	return ioutil.Discard.Write(b)
+}
+
+type responseStatusLogger struct {
+	http.ResponseWriter
+	Status int
+}
+
+func (rsl *responseStatusLogger) Write(b []byte) (int, error) {
+	if rsl.Status == 0 {
+		rsl.Status = http.StatusOK
+	}
+	return rsl.ResponseWriter.Write(b)
+}
+
+func (rsl *responseStatusLogger) WriteHeader(s int) {
+	rsl.ResponseWriter.WriteHeader(s)
+	rsl.Status = s
 }
