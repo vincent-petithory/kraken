@@ -6,6 +6,7 @@ Typical uses are sharing files quickly, on LAN or from a remote box.
 If you happen to often use `python -m http.server`, then this project should be of interest.
 
 ## Install
+[![wercker status](https://app.wercker.com/status/0f6deadcf557ed3791b25a723f908b2a/s "wercker status")](https://app.wercker.com/project/bykey/0f6deadcf557ed3791b25a723f908b2a)
 
 Kraken is written in Go. The first step is to install Go on your system, if it isn't done yet.
 
