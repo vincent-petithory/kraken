@@ -125,8 +125,15 @@ By default, SOURCE is mounted on /$(basename SOURCE)`,
 	eventsCmd := &cobra.Command{
 		Use:   "events [EVENT]...",
 		Short: "Listen for events from kraken",
-		Long:  "Listen for the specified events from kraken. If no event is provided, all events are listened for. Otherwise, only the specified events will be listened for. EVENTs can be server or mount",
-		Run:   clientCmd(c, flags, listenEvents),
+		Long: `Listen for the specified events from kraken. If no event is provided, all events are listened for. Otherwise, only the specified events will be listened for.
+Available EVENTs are:
+
+ * server: events related to creating and deleting servers,
+ * mount: events related to creating, changing and deleting mounts on a server,
+ * fileserver: whenever a file/directory is served by a server.
+
+`,
+		Run: clientCmd(c, flags, listenEvents),
 	}
 
 	rootCmd := &cobra.Command{

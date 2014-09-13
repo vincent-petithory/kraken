@@ -52,7 +52,9 @@ func main() {
 	adminAddr := defaultAddr
 	// Register fileservers
 	fsf := make(fileserver.Factory)
-	fsf.Register("beachplug", beachplug.Server)
+	if err := fsf.Register("beachplug", beachplug.Server); err != nil {
+		log.Fatal(err)
+	}
 	// Init server pool, run existing servers and listen for new ones
 	serverPool := kraken.NewServerPool(fsf)
 	go serverPool.ListenAndRun()

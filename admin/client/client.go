@@ -75,7 +75,6 @@ func (c *Client) doRequest(method string, route admin.Route, v interface{}) (*ht
 }
 
 func (c *Client) checkCode(resp *http.Response, code int) error {
-	// TODO unmarshal api error type when jsonify4xx-5xx middleware is done.
 	if resp.StatusCode != code {
 		b, err := ioutil.ReadAll(resp.Body)
 		if err != nil {

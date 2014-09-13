@@ -1,15 +1,15 @@
 package beachplug
 
 import (
-	"net/http"
-
 	"fmt"
-	"github.com/vincent-petithory/kraken/fileserver"
 	"html/template"
 	"log"
+	"net/http"
 	"net/url"
 	"sort"
 	"time"
+
+	"github.com/vincent-petithory/kraken/fileserver"
 )
 
 var Server fileserver.Constructor = func(root string, params fileserver.Params) fileserver.Server {
