@@ -42,3 +42,28 @@ $ krakenctl ls
 $ # View contents in a browser
 $ xdg-open http://localhost:4567/pics
 ~~~
+
+Run:
+
+    krakenctl help
+
+For help on all available commands.
+
+## Events
+
+It is possible to monitor krakend activity by listening to events.
+
+There are 3 kind of events:
+
+ * server: a http server was created or deleted,
+ * mount: a mount point has been created, deleted or updated on one http server,
+ * fileserve: a file was served by a server on a mount point.
+
+To listen to events, simply run
+
+    krakenctl events
+
+This will listen to all events.
+To limit listening to only certain kind of events:
+
+    krakenctl events server mount

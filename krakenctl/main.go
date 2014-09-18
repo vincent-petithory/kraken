@@ -130,7 +130,7 @@ Available EVENTs are:
 
  * server: events related to creating and deleting servers,
  * mount: events related to creating, changing and deleting mounts on a server,
- * fileserver: whenever a file/directory is served by a server.
+ * fileserve: whenever a file/directory is served by a server.
 
 `,
 		Run: clientCmd(c, flags, listenEvents),
