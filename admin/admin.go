@@ -340,8 +340,9 @@ func (sph *ServerPoolHandler) serverOr404(w http.ResponseWriter, r *http.Request
 }
 
 func (sph *ServerPoolHandler) getServers(w http.ResponseWriter, r *http.Request) {
-	srvs := make([]Server, 0, len(sph.ServerPool.Srvs))
-	for _, srv := range sph.ServerPool.Srvs {
+	spSrvs := sph.ServerPool.Servers()
+	srvs := make([]Server, 0, len(spSrvs))
+	for _, srv := range spSrvs {
 		srvs = append(srvs, *newServerDataFromServer(srv))
 	}
 	sph.serveJSON(w, r, srvs, http.StatusOK)
@@ -440,9 +441,7 @@ func (sph *ServerPoolHandler) createServer(w http.ResponseWriter, r *http.Reques
 
 func (sph *ServerPoolHandler) removeServers(w http.ResponseWriter, r *http.Request) {
 	var errs []error
-	srvs := make([]*kraken.Server, len(sph.ServerPool.Srvs))
-	copy(srvs, sph.ServerPool.Srvs)
-	for _, srv := range srvs {
+	for _, srv := range sph.ServerPool.Servers() {
 		if ok, err := sph.ServerPool.Remove(srv.Port); err != nil {
 			errs = append(errs, err)
 			sph.logErrSrv(srv, err)

@@ -242,14 +242,14 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 }
 
 type ServerPool struct {
-	Srvs  []*Server
+	srvs  []*Server
 	Fsf   fileserver.Factory
 	srvCh chan *Server
+	m     sync.Mutex
 }
 
 func NewServerPool(fsf fileserver.Factory) *ServerPool {
 	return &ServerPool{
-		Srvs:  make([]*Server, 0),
 		Fsf:   fsf,
 		srvCh: make(chan *Server),
 	}
@@ -260,12 +260,16 @@ func (sp *ServerPool) Add(addr string) (*Server, error) {
 		return nil, err
 	}
 	s := NewServer(addr, sp.Fsf)
-	sp.Srvs = append(sp.Srvs, s)
+	sp.m.Lock()
+	sp.srvs = append(sp.srvs, s)
+	sp.m.Unlock()
 	return s, nil
 }
 
 func (sp *ServerPool) Get(port uint16) *Server {
-	for _, srv := range sp.Srvs {
+	sp.m.Lock()
+	defer sp.m.Unlock()
+	for _, srv := range sp.srvs {
 		if srv.Port == port {
 			return srv
 		}
@@ -273,17 +277,31 @@ func (sp *ServerPool) Get(port uint16) *Server {
 	return nil
 }
 
+func (sp *ServerPool) Servers() []*Server {
+	sp.m.Lock()
+	srvs := make([]*Server, len(sp.srvs))
+	copy(srvs, sp.srvs[:])
+	sp.m.Unlock()
+	return srvs
+}
+
+func (sp *ServerPool) NServer() int {
+	return len(sp.Servers())
+}
+
 func (sp *ServerPool) Remove(port uint16) (bool, error) {
-	for i, srv := range sp.Srvs {
+	sp.m.Lock()
+	defer sp.m.Unlock()
+	for i, srv := range sp.srvs {
 		if srv.Port != port {
 			continue
 		}
 		if err := srv.Close(); err != nil {
 			return false, err
 		}
-		copy(sp.Srvs[i:], sp.Srvs[i+1:])
-		sp.Srvs[len(sp.Srvs)-1] = nil
-		sp.Srvs = sp.Srvs[:len(sp.Srvs)-1]
+		copy(sp.srvs[i:], sp.srvs[i+1:])
+		sp.srvs[len(sp.srvs)-1] = nil
+		sp.srvs = sp.srvs[:len(sp.srvs)-1]
 		return true, nil
 	}
 	return false, nil
@@ -294,7 +312,9 @@ func (sp *ServerPool) StartSrv(s *Server) bool {
 	if s.Running {
 		return false
 	}
-	for _, srv := range sp.Srvs {
+	sp.m.Lock()
+	defer sp.m.Unlock()
+	for _, srv := range sp.srvs {
 		if srv == s {
 			sp.srvCh <- s
 			return true
