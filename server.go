@@ -18,13 +18,13 @@ import (
 
 type MountMap struct {
 	m   map[string]fileserver.Server
-	mu  sync.RWMutex
+	mu  sync.Mutex
 	fsf fileserver.Factory
 }
 
 func (mm *MountMap) Targets() []string {
-	mm.mu.RLock()
-	defer mm.mu.RUnlock()
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
 	mountTargets := make([]string, 0, len(mm.m))
 	for mountTarget := range mm.m {
 		mountTargets = append(mountTargets, mountTarget)
@@ -32,11 +32,11 @@ func (mm *MountMap) Targets() []string {
 	return mountTargets
 }
 
-// Get retrieves the source for the given mount target.
+// GetSource retrieves the source for the given mount target.
 // It returns "" if the mount target doesn't exist.
 func (mm *MountMap) GetSource(mountTarget string) string {
-	mm.mu.RLock()
-	defer mm.mu.RUnlock()
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
 	fs, ok := mm.m[mountTarget]
 	if !ok {
 		return ""
@@ -62,9 +62,6 @@ func (e *MountSourcePermError) Error() string {
 // Put registers a mount target for the given mount source.
 // It returns true if the mount target already exists.
 func (mm *MountMap) Put(mountTarget string, mountSource string, fsType string, fsParams fileserver.Params) (bool, error) {
-	mm.mu.Lock()
-	defer mm.mu.Unlock()
-
 	// mountTarget must start with /
 	if !strings.HasPrefix(mountTarget, "/") {
 		return false, ErrInvalidMountTarget
@@ -86,20 +83,21 @@ func (mm *MountMap) Put(mountTarget string, mountSource string, fsType string, f
 		return false, &MountSourcePermError{fmt.Errorf("%s: not a directory", mountSource)}
 	}
 
+	mm.mu.Lock()
 	_, ok := mm.m[mountTarget]
-
 	fs := mm.fsf.New(mountSource, fsType, fsParams)
 	mm.m[mountTarget] = fs
+	mm.mu.Unlock()
 	return ok, nil
 }
 
 // Delete removes an existing mount target.
 // It returns true if the mount target existed.
 func (mm *MountMap) DeleteTarget(mountTarget string) bool {
-	mm.mu.RLock()
-	defer mm.mu.RUnlock()
+	mm.mu.Lock()
 	_, ok := mm.m[mountTarget]
 	delete(mm.m, mountTarget)
+	mm.mu.Unlock()
 	return ok
 }
 
@@ -108,7 +106,8 @@ func (mm *MountMap) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		maxMountTargetLen int
 		mountTarget       string
 	)
-	mm.mu.RLock()
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
 	for t := range mm.m {
 		if strings.HasPrefix(r.URL.Path, t) && len(t) >= maxMountTargetLen {
 			maxMountTargetLen = len(t)
@@ -117,7 +116,6 @@ func (mm *MountMap) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if maxMountTargetLen == 0 {
 		http.Error(w, fmt.Sprintf("%s: mount target or file not found", r.URL.Path), http.StatusNotFound)
-		mm.mu.RUnlock()
 		return
 	}
 
@@ -129,7 +127,6 @@ func (mm *MountMap) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	fs, ok := mm.m[mountTarget]
-	mm.mu.RUnlock()
 	if !ok {
 		http.Error(w, fmt.Sprintf("mount target %q not found", mountTarget), http.StatusNotFound)
 		return
