@@ -203,6 +203,7 @@ func (s *Server) Close() error {
 
 type connsCloserListener struct {
 	net.Listener
+	m     sync.Mutex
 	conns []net.Conn
 }
 
@@ -211,11 +212,15 @@ func (ln *connsCloserListener) Accept() (c net.Conn, err error) {
 	if err != nil {
 		return
 	}
+	ln.m.Lock()
 	ln.conns = append(ln.conns, c)
+	ln.m.Unlock()
 	return c, nil
 }
 
 func (ln *connsCloserListener) Close() error {
+	ln.m.Lock()
+	defer ln.m.Unlock()
 	for _, c := range ln.conns {
 		if err := c.Close(); err != nil {
 			log.Println(err)
