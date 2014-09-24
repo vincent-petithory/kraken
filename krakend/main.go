@@ -57,7 +57,7 @@ func main() {
 	}
 	// Init server pool, run existing servers and listen for new ones
 	serverPool := kraken.NewServerPool(fsf)
-	go serverPool.ListenAndRun()
+	go serverPool.Listen()
 
 	// Start administration server
 	sph := admin.NewServerPoolHandler(serverPool)

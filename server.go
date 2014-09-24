@@ -306,13 +306,7 @@ func (sp *ServerPool) StartSrv(s *Server) bool {
 	return false
 }
 
-func (sp *ServerPool) ListenAndRun() {
-	for _, srv := range sp.Srvs {
-		go func(s *Server) {
-			// Ignore errClosing errors. See https://code.google.com/p/go/issues/detail?id=4373
-			s.ListenAndServe()
-		}(srv)
-	}
+func (sp *ServerPool) Listen() {
 	for srv := range sp.srvCh {
 		go func(s *Server) {
 			// Ignore errClosing errors. See https://code.google.com/p/go/issues/detail?id=4373
