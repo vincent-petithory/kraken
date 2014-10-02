@@ -16,6 +16,8 @@ You can update an installation of *kraken* with `go get -u github.com/vincent-pe
 
 Upon install, `krakend` and `krakenctl` are available.
 
+There's also a [PKGBUILD](https://github.com/vincent-petithory/pkgbuilds/blob/master/kraken-git/PKGBUILD) for Archlinux on [AUR](https://aur.archlinux.org/packages/kraken-git/).
+
 ## Quickstart
 
 ~~~ shell
