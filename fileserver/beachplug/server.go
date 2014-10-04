@@ -8,10 +8,12 @@ import (
 	"net/url"
 	"sort"
 	"time"
+	"unicode/utf8"
 
 	"github.com/vincent-petithory/kraken/fileserver"
 )
 
+// Server defines the beachplug server constructor.
 var Server fileserver.Constructor = func(root string, params fileserver.Params) fileserver.Server {
 	return &server{
 		root: root,
@@ -58,6 +60,7 @@ func (s server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Dir listing
 	ctx := tplCtx{
 		Root:        r.URL.Path,
+		Style:       css,
 		Files:       make(filelist, 0),
 		Directories: make(dirlist, 0),
 	}
@@ -90,6 +93,7 @@ func (s server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type tplCtx struct {
 	Root           string
+	Style          template.CSS
 	Files          filelist
 	Directories    dirlist
 	NumFiles       int
@@ -121,6 +125,12 @@ func (l filelist) Less(i int, j int) bool {
 func (l filelist) Swap(i int, j int) { l[i], l[j] = l[j], l[i] }
 func (l filelist) Len() int          { return len(l) }
 
+const (
+	kib = 1024
+	mib = 1024 * 1024
+	gib = 1024 * 1024 * 1024
+)
+
 var fm = map[string]interface{}{
 	"urlpath": func(path string) string {
 		return (&url.URL{Path: path}).String()
@@ -131,60 +141,96 @@ var fm = map[string]interface{}{
 		}
 		return v
 	},
+	"fmttime": func(t time.Time) string {
+		return t.Format("2006-01-02 15:04:05")
+	},
+	"humanbytes": func(n int64) string {
+		switch {
+		case n > gib:
+			return fmt.Sprintf("%.1f GiB", float64(n)/gib)
+		case n > mib:
+			return fmt.Sprintf("%.1f MiB", float64(n)/mib)
+		case n > kib:
+			return fmt.Sprintf("%.1f KiB", float64(n)/kib)
+		default:
+			return fmt.Sprintf("%d B", n)
+		}
+	},
+	"ellipsis": func(s string, max int) string {
+		if utf8.RuneCountInString(s) > max {
+			return fmt.Sprintf("%."+fmt.Sprintf("%d", max-1)+"s…", s)
+		}
+		return s
+	},
 }
+
 var tpl = template.Must(template.New("").Funcs(fm).Parse(tplstr))
 
-var tplstr = fmt.Sprintf(`<!DOCTYPE html>
+var tplstr = `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
     <title>Index on {{.Root}}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style type="text/css">%s</style>
+    <style type="text/css">{{.Style}}</style>
   </head>
 <body>
-  <h3>{{.Root}}</h3>
-  <hr/>
-  <table>
-  {{range sorted .Directories}}
-    <tr>
-      <td><a href="{{ urlpath . }}/">{{ . }}/</a></td>
-    </tr>
-  {{end}}
-  {{ if and .NumDirectories .NumFiles }}
-  <tr><td colspan="3"><hr/></td></tr>
-  {{ end }}
+  <div class="header">
+  <a href="https://github.com/vincent-petithory/kraken">kraken</a>
+  <h3>{{.Root}}</h3> 
+  </div>
+  <div class="contents">
+    <table>
+    {{range sorted .Directories}}
+      <tr>
+        <td colspan="3"><a href="{{ urlpath . }}/">{{ . }}/</a></td>
+      </tr>
+    {{end}}
+    </table>
+    {{ if and .NumDirectories .NumFiles }}
+    <hr/>
+    {{ end }}
 
-  <tr>
-    <th>File</th>
-    <th>Size</th>
-    <th>Mod time</th>
-  </tr>
-  {{range sorted .Files}}
+    {{ if .NumFiles }}
+    <table>
     <tr>
-      <td><a href="{{ urlpath .Name }}">{{ .Name }}</a></td>
-      <td>{{ .Size }}</td>
-      <td>{{ .ModTime }}</td>
+      <th>File</th>
+      <th>Size</th>
+      <th>Mod time</th>
     </tr>
-  {{end}}
-  </table>
-  <hr/>
+    {{range sorted .Files}}
+      <tr>
+        <td><a href="{{ urlpath .Name }}">{{ ellipsis .Name 50 }}</a></td>
+        <td>{{ humanbytes .Size }}</td>
+        <td>{{ fmttime .ModTime }}</td>
+      </tr>
+    {{end}}
+    </table>
+    {{end}}
+  </div>
 </body>
 </html>
-`, css)
+`
 
-const css = `
+const css = template.CSS(`
+* {
+  padding: 0;
+  margin: 0;
+}
+
 html {
-  color: #222;
-  font-size: 10px;
-  font-family: Monospace;
+  color: rgb(55, 55, 55);
+  font-family: Sans;
+}
+
+body {
+  background: rgb(255, 233, 198);
 }
 
 hr {
   display: block;
-  height: 1px;
   border: 0;
-  border-top: 1px solid #ccc;
+  border-top: 3px solid rgb(199, 65, 79);
   margin: 1em 0;
   padding: 0;
 }
@@ -193,4 +239,45 @@ th {
   font-weight: bold;
   text-align: left;
 }
-`
+
+th, td {
+  padding: 2px;
+}
+
+.header {
+  background: rgb(199, 65, 79);
+  padding: 22px 15px;
+}
+.header a, .header a:visited {
+  float: right;
+  color: rgb(55, 55, 55);
+  font-size: 1.2em;
+  font-weight: bold;
+  transition: color 0.2s;
+  text-decoration: none;
+}
+.header a:hover {
+  color: rgb(75, 75, 75);
+  transition: color 0.2s;
+}
+
+.contents {
+  margin-top: 20px;
+  margin-left: 20%;
+  margin-right: 20%;
+  font-size: 0.7em;
+}
+
+.contents a, .contents a:visited {
+  color: rgb(199, 65, 79);
+  padding: 2px;
+  background: transparent;
+  transition: background 0.3s, color 0.2s;
+  text-decoration: none;
+}
+.contents a:hover {
+  background: rgb(199, 65, 79);
+  color: rgb(255, 233, 198);
+  transition: background 0.2s, color 0.2s;
+}
+`)
