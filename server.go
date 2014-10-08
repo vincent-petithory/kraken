@@ -107,7 +107,6 @@ func (mm *MountMap) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		mountTarget       string
 	)
 	mm.mu.Lock()
-	defer mm.mu.Unlock()
 	for t := range mm.m {
 		if strings.HasPrefix(r.URL.Path, t) && len(t) >= maxMountTargetLen {
 			maxMountTargetLen = len(t)
@@ -116,6 +115,7 @@ func (mm *MountMap) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if maxMountTargetLen == 0 {
 		http.Error(w, fmt.Sprintf("%s: mount target or file not found", r.URL.Path), http.StatusNotFound)
+		mm.mu.Unlock()
 		return
 	}
 
@@ -123,10 +123,12 @@ func (mm *MountMap) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path = r.URL.Path[maxMountTargetLen:]
 		if r.URL.Path == "" {
 			http.Redirect(w, r, mountTarget+"/", http.StatusMovedPermanently)
+			mm.mu.Unlock()
 			return
 		}
 	}
 	fs, ok := mm.m[mountTarget]
+	mm.mu.Unlock()
 	if !ok {
 		http.Error(w, fmt.Sprintf("mount target %q not found", mountTarget), http.StatusNotFound)
 		return
