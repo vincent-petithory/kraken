@@ -66,8 +66,12 @@ func (s server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	for {
 		fis, err := f.Readdir(100)
-		if err != nil || len(fis) == 0 {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		for _, fi := range fis {
 			if fi.IsDir() {
