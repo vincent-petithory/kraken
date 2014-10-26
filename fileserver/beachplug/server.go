@@ -3,10 +3,12 @@ package beachplug
 import (
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"sort"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -113,7 +115,7 @@ type file struct {
 type dirlist []string
 
 func (l dirlist) Less(i int, j int) bool {
-	return l[i] < l[j]
+	return strings.ToLower(l[i]) < strings.ToLower(l[j])
 }
 func (l dirlist) Swap(i int, j int) { l[i], l[j] = l[j], l[i] }
 func (l dirlist) Len() int          { return len(l) }
@@ -124,7 +126,7 @@ func (l filelist) Less(i int, j int) bool {
 	if l[i].Name == l[j].Name {
 		return l[i].ModTime.Before(l[j].ModTime)
 	}
-	return l[i].Name < l[j].Name
+	return strings.ToLower(l[i].Name) < strings.ToLower(l[j].Name)
 }
 func (l filelist) Swap(i int, j int) { l[i], l[j] = l[j], l[i] }
 func (l filelist) Len() int          { return len(l) }
