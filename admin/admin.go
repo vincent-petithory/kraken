@@ -15,7 +15,6 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/justinas/alice"
 	"github.com/vincent-petithory/kraken"
 	"github.com/vincent-petithory/kraken/fileserver"
 )
@@ -130,32 +129,27 @@ func NewServerPoolHandler(serverPool *kraken.ServerPool) *ServerPoolHandler {
 			eventCh: make(chan *Event),
 		},
 	}
-	chain := alice.New(
-		func(h http.Handler) http.Handler {
-			return handlers.ContentTypeHandler(h, "application/json")
-		},
-		handlers.HTTPMethodOverrideHandler,
-		func(h http.Handler) http.Handler {
-			return jsonResponseRewriteHandler(&sph, h)
-		},
-		handlers.CompressHandler,
-	)
-	sph.routes.r.Get(routeServers).Handler(chain.Then(handlers.MethodHandler{
+
+	resHandler := func(h http.Handler) http.Handler {
+		return handlers.CompressHandler(jsonResponseRewriteHandler(&sph, handlers.HTTPMethodOverrideHandler(handlers.ContentTypeHandler(h, "application/json"))))
+
+	}
+	sph.routes.r.Get(routeServers).Handler(resHandler(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(sph.getServers),
 		"POST":   http.HandlerFunc(sph.createServerWithRandomPort),
 		"DELETE": http.HandlerFunc(sph.removeServers),
 	}))
-	sph.routes.r.Get(routeServersSelf).Handler(chain.Then(handlers.MethodHandler{
+	sph.routes.r.Get(routeServersSelf).Handler(resHandler(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(sph.getServer),
 		"PUT":    http.HandlerFunc(sph.createServer),
 		"DELETE": http.HandlerFunc(sph.removeServer),
 	}))
-	sph.routes.r.Get(routeServersSelfMounts).Handler(chain.Then(handlers.MethodHandler{
+	sph.routes.r.Get(routeServersSelfMounts).Handler(resHandler(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(sph.getServerMounts),
 		"POST":   http.HandlerFunc(sph.createServerMount),
 		"DELETE": http.HandlerFunc(sph.removeServerMounts),
 	}))
-	sph.routes.r.Get(routeServersSelfMountsSelf).Handler(chain.Then(handlers.MethodHandler{
+	sph.routes.r.Get(routeServersSelfMountsSelf).Handler(resHandler(handlers.MethodHandler{
 		"GET":    http.HandlerFunc(sph.getServerMount),
 		"DELETE": http.HandlerFunc(sph.removeServerMount),
 	}))
@@ -164,20 +158,18 @@ func NewServerPoolHandler(serverPool *kraken.ServerPool) *ServerPoolHandler {
 	})
 	sph.routes.r.Get(routeEvents).Handler(sph.events)
 
-	routerChain := alice.New(
-		func(h http.Handler) http.Handler {
-			dw := &dynamicWriter{func(b []byte) (int, error) {
-				if sph.Log != nil {
-					sph.Log.Printf("%s", b)
-				} else {
-					log.Printf("%s", b)
-				}
-				return len(b), nil
-			}}
-			return handlers.CombinedLoggingHandler(dw, h)
-		},
-	)
-	sph.h = routerChain.Then(sph.routes.r)
+	logger := func(h http.Handler) http.Handler {
+		dw := &dynamicWriter{func(b []byte) (int, error) {
+			if sph.Log != nil {
+				sph.Log.Printf("%s", b)
+			} else {
+				log.Printf("%s", b)
+			}
+			return len(b), nil
+		}}
+		return handlers.CombinedLoggingHandler(dw, h)
+	}
+	sph.h = logger(sph.routes.r)
 
 	go sph.events.Broadcast()
 	return &sph
@@ -369,23 +361,23 @@ func (sph *ServerPoolHandler) addAndStartSrv(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Add middlewares to the server
-	srvChain := alice.New(
-		func(h http.Handler) http.Handler {
+	srv.HandlerWrapper = func(handler http.Handler) http.Handler {
+		logger := func(h http.Handler) http.Handler {
 			dw := &dynamicWriter{func(b []byte) (int, error) {
 				sph.logfSrv(srv, "%s", b)
 				return len(b), nil
 			}}
 			return handlers.CombinedLoggingHandler(dw, h)
-		},
-		func(h http.Handler) http.Handler {
+		}
+		eventsLogger := func(h http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				rsl := &responseStatusLogger{ResponseWriter: w}
 				h.ServeHTTP(rsl, r)
 				sph.events.Send(Event{EventTypeFileServe, FileServeEvent{*newServerDataFromServer(srv), r.URL.Path, rsl.Status}})
 			})
-		},
-	)
-	srv.HandlerWrapper = srvChain.Then
+		}
+		return logger(eventsLogger(handler))
+	}
 
 	if ok := sph.ServerPool.StartSrv(srv); !ok {
 		sph.logErrSrv(srv, "unable to start server")
