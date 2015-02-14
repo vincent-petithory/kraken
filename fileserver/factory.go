@@ -11,7 +11,7 @@ type Server interface {
 	Root() string
 }
 
-type Params map[string]interface{}
+type Params map[string]string
 
 type Factory map[string]Constructor
 
