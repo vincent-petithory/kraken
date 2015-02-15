@@ -59,9 +59,6 @@ func main() {
 	serverPool := kraken.NewServerPool(fsf)
 	go serverPool.Listen()
 
-	// Start administration server
-	sph := admin.NewServerPoolHandler(serverPool)
-
 	if envAdminAddr := os.Getenv(envKrakenAddr); envAdminAddr != "" {
 		adminAddr = envAdminAddr
 	}
@@ -81,7 +78,9 @@ func main() {
 	if urlErr != nil {
 		log.Fatal(urlErr)
 	}
-	sph.SetBaseURL(adminURL)
+
+	// Start administration server
+	sph := admin.NewServerPoolHandler(serverPool, adminURL)
 
 	srv := &http.Server{
 		Handler: sph,
