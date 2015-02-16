@@ -2,6 +2,4 @@
 
 package admin
 
-import (
-	"net/http"
-)
+// No default handler func was generated, because all are implemented.
