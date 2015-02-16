@@ -2,10 +2,7 @@ package admin
 
 import (
 	"crypto/sha1"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"io/ioutil"
 	"log"
 	"net"
@@ -138,41 +135,6 @@ func (sph *ServerPoolHandler) BaseURL() *url.URL {
 	return &(*(sph.router.BaseURL))
 }
 
-func (sph *ServerPoolHandler) serveJSON(w http.ResponseWriter, r *http.Request, data interface{}, code int) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	b, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		sph.logErr(err)
-		return
-	}
-
-	h := fnv.New64a()
-	_, err = h.Write(b)
-	if err != nil {
-		sph.logErr(err)
-		return
-	}
-	etag := `"` + base64.StdEncoding.EncodeToString(h.Sum(nil)) + `"`
-	w.Header().Set("Etag", etag)
-
-	if code == 0 {
-		code = http.StatusOK
-	}
-
-	if code == http.StatusOK {
-		if ok := handleEtag(w, r); ok {
-			return
-		}
-	}
-	w.WriteHeader(code)
-	if r.Method != "HEAD" {
-		if _, err := w.Write(b); err != nil {
-			sph.logErr(err)
-			return
-		}
-	}
-}
-
 func (sph *ServerPoolHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sph.h.ServeHTTP(w, r)
 }
@@ -202,12 +164,11 @@ func mountID(target string) string {
 	return fmt.Sprintf("%x", b)[0:7]
 }
 
-func (sph *ServerPoolHandler) addAndStartSrv(w http.ResponseWriter, r *http.Request, bindAddress string, port string) (*kraken.Server, bool) {
+func (sph *ServerPoolHandler) addAndStartSrv(bindAddress string, port string) (*kraken.Server, error) {
 	addr := net.JoinHostPort(bindAddress, port)
 	srv, err := sph.ServerPool.Add(addr)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return nil, false
+		return nil, err
 	}
 
 	// Add middlewares to the server
@@ -231,15 +192,14 @@ func (sph *ServerPoolHandler) addAndStartSrv(w http.ResponseWriter, r *http.Requ
 
 	if ok := sph.ServerPool.StartSrv(srv); !ok {
 		sph.logErrSrv(srv, "unable to start server")
-		http.Error(w, fmt.Sprintf("unable to start server on port %d", srv.Port), http.StatusInternalServerError)
-		return nil, false
+		return nil, fmt.Errorf("unable to start server on port %d", srv.Port)
 	}
 	// Wait for the server to be started
 	<-srv.Started
 	sph.logf("created server %q", srv.Addr)
 	sph.logfSrv(srv, "server available on http://%s", srv.Addr)
 	sph.events.Send(Event{EventTypeServerAdd, ServerEvent{*newServerDataFromServer(srv)}})
-	return srv, true
+	return srv, nil
 }
 
 type dynamicWriter struct {
