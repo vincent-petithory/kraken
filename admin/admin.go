@@ -20,6 +20,10 @@ const routeEvents = "events"
 
 type RouteEvents struct{}
 
+func (r RouteEvents) Location(rr RouteReverser) *url.URL {
+	return rr.ReverseRoute(routeEvents)
+}
+
 //go:generate dispel -t all -hrt *ServerPoolHandler -d all schema.json
 
 type ServerPoolHandler struct {
@@ -34,6 +38,15 @@ type registerHandlerFunc func(routeName string, handler http.Handler)
 
 func (f registerHandlerFunc) RegisterHandler(routeName string, handler http.Handler) {
 	f(routeName, handler)
+}
+
+func NewServerPoolRoutes(baseURL *url.URL) RouteReverser {
+	router := &GorillaRouter{
+		Router:  mux.NewRouter(),
+		BaseURL: baseURL,
+	}
+	registerRoutes(router)
+	return router
 }
 
 func NewServerPoolHandler(serverPool *kraken.ServerPool, baseURL *url.URL) *ServerPoolHandler {

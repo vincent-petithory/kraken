@@ -178,7 +178,7 @@ func serverList(client *client.Client, flags *flagSet, cmd *cobra.Command, args 
 		}
 		fmt.Println()
 		for _, mount := range srv.Mounts {
-			fmt.Printf("  * %s: %s -> %s\n", mount.ID, mount.Source, mount.Target)
+			fmt.Printf("  * %s: %s -> %s\n", mount.Id, mount.Source, mount.Target)
 		}
 		fmt.Println()
 	}
@@ -194,14 +194,14 @@ func serverAdd(client *client.Client, flags *flagSet, cmd *cobra.Command, args [
 		err error
 	)
 	if len(args) == 0 {
-		srv, err = client.AddServerWithRandomPort(admin.CreateServerRequest{BindAddress: flags.ServerAddBind})
+		srv, err = client.PostServers(&admin.CreateRandomServerIn{BindAddress: flags.ServerAddBind})
 	} else {
 		var port int
 		port, err = strconv.Atoi(args[0])
 		if err != nil {
 			log.Fatalf("error parsing port: %v", err)
 		}
-		srv, err = client.AddServer(uint16(port), admin.CreateServerRequest{BindAddress: flags.ServerAddBind})
+		srv, err = client.PutServersOne(strconv.Itoa(port), &admin.CreateServerIn{BindAddress: flags.ServerAddBind})
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -219,8 +219,10 @@ func serverRm(client *client.Client, flags *flagSet, cmd *cobra.Command, args []
 	if err != nil {
 		log.Fatalf("error parsing port: %v", err)
 	}
-	if err := client.RemoveServer(uint16(port)); err != nil {
+	if srv, err := client.DeleteServersOne(strconv.Itoa(port)); err != nil {
 		log.Fatal(err)
+	} else {
+		fmt.Printf("Removed server %s:%d\n", srv.BindAddress, srv.Port)
 	}
 }
 
@@ -229,8 +231,12 @@ func serverRmAll(client *client.Client, flags *flagSet, cmd *cobra.Command, args
 		cmd.Usage()
 		return
 	}
-	if err := client.RemoveAllServers(); err != nil {
+	if srvs, err := client.DeleteServers(); err != nil {
 		log.Fatal(err)
+	} else {
+		for _, srv := range srvs {
+			fmt.Printf("Removed server %s:%d\n", srv.BindAddress, srv.Port)
+		}
 	}
 }
 
@@ -239,7 +245,7 @@ func fileServerList(client *client.Client, flags *flagSet, cmd *cobra.Command, a
 		cmd.Usage()
 		return
 	}
-	fsrvs, err := client.GetFileServers()
+	fsrvs, err := client.GetFileservers()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -256,13 +262,13 @@ func mountList(client *client.Client, flags *flagSet, cmd *cobra.Command, args [
 	if err != nil {
 		log.Fatalf("error parsing port: %v", err)
 	}
-	mounts, err := client.GetMounts(uint16(port))
+	mounts, err := client.GetServersOneMounts(strconv.Itoa(port))
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for _, mount := range mounts {
-		fmt.Printf("%s: %s -> %s\n", mount.ID, mount.Source, mount.Target)
+		fmt.Printf("%s: %s -> %s\n", mount.Id, mount.Source, mount.Target)
 	}
 }
 
@@ -289,16 +295,16 @@ func mountAdd(client *client.Client, flags *flagSet, cmd *cobra.Command, args []
 		log.Fatal(err)
 	}
 
-	mount, err := client.AddMount(uint16(port), admin.CreateServerMountRequest{
-		target,
-		source,
-		flags.FileServerType,
-		fsParams,
+	mount, err := client.PostServersOneMounts(strconv.Itoa(port), &admin.CreateMountIn{
+		Target:   target,
+		Source:   source,
+		FsType:   flags.FileServerType,
+		FsParams: admin.FsParams(fsParams),
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%s: %s -> %s\n", mount.ID, mount.Source, mount.Target)
+	fmt.Printf("%s: %s -> %s\n", mount.Id, mount.Source, mount.Target)
 }
 
 func mountRm(client *client.Client, flags *flagSet, cmd *cobra.Command, args []string) {
@@ -311,8 +317,10 @@ func mountRm(client *client.Client, flags *flagSet, cmd *cobra.Command, args []s
 		log.Fatalf("error parsing port: %v", err)
 	}
 	mountID := args[1]
-	if err := client.RemoveMount(uint16(port), mountID); err != nil {
+	if mount, err := client.DeleteServersOneMountsOne(strconv.Itoa(port), mountID); err != nil {
 		log.Fatal(err)
+	} else {
+		fmt.Printf("Removed mount point %s: %s -> %s\n", mount.Id, mount.Source, mount.Target)
 	}
 }
 
@@ -334,13 +342,13 @@ func listenEvents(client *client.Client, flags *flagSet, cmd *cobra.Command, arg
 			fmt.Printf("server removed on http://%s:%d\n", se.Server.BindAddress, se.Server.Port)
 		case admin.EventTypeMountAdd:
 			me := evt.Resource.(*admin.MountEvent)
-			fmt.Printf("mount point %s added: %q -> http://%s:%d%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Server.Port, me.Mount.Target)
+			fmt.Printf("mount point %s added: %q -> http://%s:%d%s\n", me.Mount.Id, me.Mount.Source, me.Server.BindAddress, me.Server.Port, me.Mount.Target)
 		case admin.EventTypeMountUpdate:
 			me := evt.Resource.(*admin.MountEvent)
-			fmt.Printf("mount point %s updated: %q -> http://%s:%d%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Server.Port, me.Mount.Target)
+			fmt.Printf("mount point %s updated: %q -> http://%s:%d%s\n", me.Mount.Id, me.Mount.Source, me.Server.BindAddress, me.Server.Port, me.Mount.Target)
 		case admin.EventTypeMountRemove:
 			me := evt.Resource.(*admin.MountEvent)
-			fmt.Printf("mount point %s removed: %q X http://%s:%d%s\n", me.Mount.ID, me.Mount.Source, me.Server.BindAddress, me.Server.Port, me.Mount.Target)
+			fmt.Printf("mount point %s removed: %q X http://%s:%d%s\n", me.Mount.Id, me.Mount.Source, me.Server.BindAddress, me.Server.Port, me.Mount.Target)
 		case admin.EventTypeFileServe:
 			fse := evt.Resource.(*admin.FileServeEvent)
 			fmt.Printf("file served on http://%s:%d - %d - %s\n", fse.Server.BindAddress, fse.Server.Port, fse.Code, fse.Path)
