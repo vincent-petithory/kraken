@@ -17,16 +17,6 @@ type CreateServerIn struct {
 	BindAddress string `json:"bind_address"`
 }
 
-type DeleteAllMountOut []Mount
-
-type DeleteAllServerOut []Server
-
-type ListAllFileServerTypeOut []string
-
-type ListAllMountOut []Mount
-
-type ListAllServerOut []Server
-
 type Mount struct {
 	Id     string `json:"id"`
 	Source string `json:"source"`
@@ -34,9 +24,7 @@ type Mount struct {
 }
 
 type Server struct {
-	BindAddress string       `json:"bind_address"`
-	Mounts      ServerMounts `json:"mounts"`
-	Port        int          `json:"port"`
+	BindAddress string  `json:"bind_address"`
+	Mounts      []Mount `json:"mounts"`
+	Port        int     `json:"port"`
 }
-
-type ServerMounts []Mount

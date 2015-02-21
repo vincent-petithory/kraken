@@ -14,11 +14,11 @@ func (sph *ServerPoolHandler) writeLocation(w http.ResponseWriter, routeLocation
 	w.Header().Set("Location", routeLocation.Location(sph.router).String())
 }
 
-func (sph *ServerPoolHandler) getFileservers(w http.ResponseWriter, r *http.Request) (int, ListAllFileServerTypeOut, error) {
-	return http.StatusOK, ListAllFileServerTypeOut(sph.ServerPool.Fsf.Types()), nil
+func (sph *ServerPoolHandler) getFileservers(w http.ResponseWriter, r *http.Request) (int, []string, error) {
+	return http.StatusOK, sph.ServerPool.Fsf.Types(), nil
 }
 
-func (sph *ServerPoolHandler) getServers(w http.ResponseWriter, r *http.Request) (int, ListAllServerOut, error) {
+func (sph *ServerPoolHandler) getServers(w http.ResponseWriter, r *http.Request) (int, []Server, error) {
 	spSrvs := sph.ServerPool.Servers()
 	srvs := make([]Server, len(spSrvs))
 	for i, srv := range spSrvs {
@@ -39,7 +39,7 @@ func (sph *ServerPoolHandler) postServers(w http.ResponseWriter, r *http.Request
 	return http.StatusCreated, newServerDataFromServer(srv), nil
 }
 
-func (sph *ServerPoolHandler) deleteServers(w http.ResponseWriter, r *http.Request) (int, DeleteAllServerOut, error) {
+func (sph *ServerPoolHandler) deleteServers(w http.ResponseWriter, r *http.Request) (int, []Server, error) {
 	var (
 		errs []error
 		srvs []Server
@@ -115,7 +115,7 @@ func (sph *ServerPoolHandler) deleteServersOne(w http.ResponseWriter, r *http.Re
 	return http.StatusNotImplemented, srvData, nil
 }
 
-func (sph *ServerPoolHandler) getServersOneMounts(w http.ResponseWriter, r *http.Request, serverPort string) (int, ListAllMountOut, error) {
+func (sph *ServerPoolHandler) getServersOneMounts(w http.ResponseWriter, r *http.Request, serverPort string) (int, []Mount, error) {
 	port, err := strconv.Atoi(serverPort)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
@@ -133,7 +133,7 @@ func (sph *ServerPoolHandler) getServersOneMounts(w http.ResponseWriter, r *http
 			Target: mountTarget,
 		})
 	}
-	return http.StatusOK, ListAllMountOut(mounts), nil
+	return http.StatusOK, mounts, nil
 }
 
 func (sph *ServerPoolHandler) postServersOneMounts(w http.ResponseWriter, r *http.Request, serverPort string, vreq *CreateMountIn) (int, *Mount, error) {
@@ -167,7 +167,7 @@ func (sph *ServerPoolHandler) postServersOneMounts(w http.ResponseWriter, r *htt
 	return http.StatusCreated, &mount, nil
 }
 
-func (sph *ServerPoolHandler) deleteServersOneMounts(w http.ResponseWriter, r *http.Request, serverPort string) (int, DeleteAllMountOut, error) {
+func (sph *ServerPoolHandler) deleteServersOneMounts(w http.ResponseWriter, r *http.Request, serverPort string) (int, []Mount, error) {
 	port, err := strconv.Atoi(serverPort)
 	if err != nil {
 		return http.StatusBadRequest, nil, err

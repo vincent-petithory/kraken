@@ -8,8 +8,8 @@ import (
 	"github.com/vincent-petithory/kraken/admin"
 )
 
-func (c *Client) GetFileservers() (admin.ListAllFileServerTypeOut, error) {
-	var dataOut admin.ListAllFileServerTypeOut
+func (c *Client) GetFileservers() ([]string, error) {
+	var dataOut []string
 	if err := c.doRequestAndDecodeResponse(
 		"GET",
 		admin.RouteFileservers{},
@@ -22,8 +22,8 @@ func (c *Client) GetFileservers() (admin.ListAllFileServerTypeOut, error) {
 	return dataOut, nil
 }
 
-func (c *Client) GetServers() (admin.ListAllServerOut, error) {
-	var dataOut admin.ListAllServerOut
+func (c *Client) GetServers() ([]admin.Server, error) {
+	var dataOut []admin.Server
 	if err := c.doRequestAndDecodeResponse(
 		"GET",
 		admin.RouteServers{},
@@ -50,8 +50,8 @@ func (c *Client) PostServers(dataIn *admin.CreateRandomServerIn) (*admin.Server,
 	return &dataOut, nil
 }
 
-func (c *Client) DeleteServers() (admin.DeleteAllServerOut, error) {
-	var dataOut admin.DeleteAllServerOut
+func (c *Client) DeleteServers() ([]admin.Server, error) {
+	var dataOut []admin.Server
 	if err := c.doRequestAndDecodeResponse(
 		"DELETE",
 		admin.RouteServers{},
@@ -106,8 +106,8 @@ func (c *Client) DeleteServersOne(serverPort string) (*admin.Server, error) {
 	return &dataOut, nil
 }
 
-func (c *Client) GetServersOneMounts(serverPort string) (admin.ListAllMountOut, error) {
-	var dataOut admin.ListAllMountOut
+func (c *Client) GetServersOneMounts(serverPort string) ([]admin.Mount, error) {
+	var dataOut []admin.Mount
 	if err := c.doRequestAndDecodeResponse(
 		"GET",
 		admin.RouteServersOneMounts{ServerPort: serverPort},
@@ -134,8 +134,8 @@ func (c *Client) PostServersOneMounts(serverPort string, dataIn *admin.CreateMou
 	return &dataOut, nil
 }
 
-func (c *Client) DeleteServersOneMounts(serverPort string) (admin.DeleteAllMountOut, error) {
-	var dataOut admin.DeleteAllMountOut
+func (c *Client) DeleteServersOneMounts(serverPort string) ([]admin.Mount, error) {
+	var dataOut []admin.Mount
 	if err := c.doRequestAndDecodeResponse(
 		"DELETE",
 		admin.RouteServersOneMounts{ServerPort: serverPort},

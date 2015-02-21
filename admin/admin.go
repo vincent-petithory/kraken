@@ -34,12 +34,6 @@ type ServerPoolHandler struct {
 	events *serverPoolEventsHandler
 }
 
-type registerHandlerFunc func(routeName string, handler http.Handler)
-
-func (f registerHandlerFunc) RegisterHandler(routeName string, handler http.Handler) {
-	f(routeName, handler)
-}
-
 func NewServerPoolRoutes(baseURL *url.URL) RouteReverser {
 	router := &GorillaRouter{
 		Router:  mux.NewRouter(),

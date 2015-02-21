@@ -6,13 +6,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/format"
 	"io/ioutil"
 	"log"
 	"os"
 	"strings"
 	"text/template"
-
-	"go/format"
+	"unicode"
 
 	"github.com/vincent-petithory/dispel"
 )
@@ -80,10 +80,24 @@ func main() {
 
 	funcMap := dispel.NewTemplateFuncMap(schemaParser)
 	funcMap["adminPkg"] = func(symbol string) string {
+		// check it's an exported symbol
+		for _, r := range symbol {
+			if !unicode.IsLetter(r) {
+				continue
+			}
+			if unicode.IsLower(r) {
+				return symbol
+			}
+			break
+		}
+
 		var s string
-		if strings.HasPrefix(symbol, "*") {
+		switch {
+		case strings.HasPrefix(symbol, "*"):
 			s = "*admin." + symbol[1:]
-		} else {
+		case strings.HasPrefix(symbol, "[]"):
+			s = "[]admin." + symbol[2:]
+		default:
 			s = "admin." + symbol
 		}
 		return s
